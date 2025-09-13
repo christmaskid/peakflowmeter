@@ -4,6 +4,10 @@ import 'package:path/path.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
+import 'strings.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 
 void main() {
   runApp(const MyApp());
@@ -108,7 +112,7 @@ class _HomePageState extends State<HomePage> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text('Add Entry'),
+              title: Text(AppStrings.get('addEntry')),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -116,7 +120,7 @@ class _HomePageState extends State<HomePage> {
                     TextField(
                       controller: valueController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Peak Flow Value'),
+                      decoration: InputDecoration(labelText: AppStrings.get('peakFlowValue')),
                     ),
                     DropdownButton<String>(
                       value: selectedOption,
@@ -129,20 +133,20 @@ class _HomePageState extends State<HomePage> {
                       items: options.map((option) {
                         return DropdownMenuItem(
                           value: option,
-                          child: Text(option),
+                          child: Text(AppStrings.get(option.toLowerCase())),
                         );
                       }).toList(),
                     ),
                     if (selectedOption == 'Symptomatic')
                       TextField(
                         controller: symptomsController,
-                        decoration: const InputDecoration(labelText: 'Symptoms'),
+                        decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
                       ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Date: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
+                          child: Text('${AppStrings.get('date')}: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
                         ),
                         TextButton(
                           onPressed: () async {
@@ -164,14 +168,14 @@ class _HomePageState extends State<HomePage> {
                               });
                             }
                           },
-                          child: const Text('Pick Date'),
+                          child: Text(AppStrings.get('pickDate')),
                         ),
                       ],
                     ),
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Time: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
+                          child: Text('${AppStrings.get('time')}: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
                         ),
                         TextButton(
                           onPressed: () async {
@@ -191,7 +195,7 @@ class _HomePageState extends State<HomePage> {
                               });
                             }
                           },
-                          child: const Text('Pick Time'),
+                          child: Text(AppStrings.get('pickTime')),
                         ),
                       ],
                     ),
@@ -203,7 +207,7 @@ class _HomePageState extends State<HomePage> {
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  child: const Text('Cancel'),
+                  child: Text(AppStrings.get('cancel')),
                 ),
                 TextButton(
                   onPressed: () {
@@ -214,7 +218,7 @@ class _HomePageState extends State<HomePage> {
                     symptomsController.clear();
                     Navigator.of(context).pop();
                   },
-                  child: const Text('Add'),
+                  child: Text(AppStrings.get('add')),
                 ),
               ],
             );
@@ -235,7 +239,7 @@ class _HomePageState extends State<HomePage> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text('Edit Entry'),
+              title: Text(AppStrings.get('editEntry')),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -243,7 +247,7 @@ class _HomePageState extends State<HomePage> {
                     TextField(
                       controller: valueController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Peak Flow Value'),
+                      decoration: InputDecoration(labelText: AppStrings.get('peakFlowValue')),
                     ),
                     DropdownButton<String>(
                       value: selectedOption,
@@ -256,20 +260,20 @@ class _HomePageState extends State<HomePage> {
                       items: options.map((option) {
                         return DropdownMenuItem(
                           value: option,
-                          child: Text(option),
+                          child: Text(AppStrings.get(option.toLowerCase())),
                         );
                       }).toList(),
                     ),
                     if (selectedOption == 'Symptomatic')
                       TextField(
                         controller: symptomsController,
-                        decoration: const InputDecoration(labelText: 'Symptoms'),
+                        decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
                       ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Date: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
+                          child: Text('${AppStrings.get('date')}: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
                         ),
                         TextButton(
                           onPressed: () async {
@@ -291,14 +295,14 @@ class _HomePageState extends State<HomePage> {
                               });
                             }
                           },
-                          child: const Text('Pick Date'),
+                          child: Text(AppStrings.get('pickDate')),
                         ),
                       ],
                     ),
                     Row(
                       children: [
                         Expanded(
-                          child: Text('Time: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
+                          child: Text('${AppStrings.get('time')}: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
                         ),
                         TextButton(
                           onPressed: () async {
@@ -318,7 +322,7 @@ class _HomePageState extends State<HomePage> {
                               });
                             }
                           },
-                          child: const Text('Pick Time'),
+                          child: Text(AppStrings.get('pickTime')),
                         ),
                       ],
                     ),
@@ -330,7 +334,7 @@ class _HomePageState extends State<HomePage> {
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  child: const Text('Cancel'),
+                  child: Text(AppStrings.get('cancel')),
                 ),
                 TextButton(
                   onPressed: () {
@@ -341,7 +345,7 @@ class _HomePageState extends State<HomePage> {
                     symptomsController.clear();
                     Navigator.of(context).pop();
                   },
-                  child: const Text('Save'),
+                  child: Text(AppStrings.get('save')),
                 ),
               ],
             );
@@ -363,11 +367,34 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Peak Flow Meter'),
+        title: Text(AppStrings.get('appTitle')),
         actions: [
           IconButton(
             icon: const Icon(Icons.show_chart),
             onPressed: () => _navigateToGraphPage(context),
+          ),
+          DropdownButton<String>(
+            value: AppStrings.currentLanguage,
+            icon: const Icon(Icons.language, color: Colors.white),
+            underline: Container(),
+            dropdownColor: Colors.white,
+            onChanged: (String? lang) {
+              if (lang != null) {
+                setState(() {
+                  AppStrings.currentLanguage = lang;
+                });
+              }
+            },
+            items: [
+              DropdownMenuItem(
+                value: 'en',
+                child: Text(AppStrings.get('english')),
+              ),
+              DropdownMenuItem(
+                value: 'zh',
+                child: Text(AppStrings.get('chinese')),
+              ),
+            ],
           ),
         ],
       ),
@@ -383,40 +410,43 @@ class _HomePageState extends State<HomePage> {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final entries = snapshot.data!;
+              List<Map<String, dynamic>> entries = snapshot.data!;
               if (entries.isEmpty) {
-                return const Center(
+                return Center(
                   child: Text(
-                    'No entries yet. Tap + to add your first entry!',
-                    style: TextStyle(fontSize: 20),
+                    AppStrings.get('noEntries'),
+                    style: const TextStyle(fontSize: 20),
                     textAlign: TextAlign.center,
                   ),
                 );
               }
+              // Sort entries by date and time descending
+              entries = List<Map<String, dynamic>>.from(entries);
+              entries.sort((a, b) {
+                final dateA = DateTime.tryParse((a['date'] ?? '') + ' ' + (a['time'] ?? '00:00')) ?? DateTime(1900);
+                final dateB = DateTime.tryParse((b['date'] ?? '') + ' ' + (b['time'] ?? '00:00')) ?? DateTime(1900);
+                return dateB.compareTo(dateA);
+              });
               return ListView.builder(
                 itemCount: entries.length,
                 itemBuilder: (context, index) {
                   final entry = entries[index];
+                  final date = entry['date'] ?? '';
+                  final time = entry['time'] ?? '';
+                  final value = entry['value']?.toString() ?? '';
+                  final option = entry['option'] ?? '';
+                  final symptoms = (entry['symptoms'] != null && entry['symptoms'].toString().trim().isNotEmpty)
+                      ? ' (${entry['symptoms']})'
+                      : '';
+                  final display = '$date $time $value $option$symptoms';
                   return ListTile(
                     title: Text(
-                      'Value: ${entry['value']}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      '${entry['date']} ${entry['time']} - ${entry['option']}',
-                      style: const TextStyle(fontSize: 18),
+                      display,
+                      style: const TextStyle(fontSize: 20),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (entry['symptoms'] != null && entry['symptoms'] != '')
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8.0),
-                            child: Text(
-                              'Symptoms: ${entry['symptoms']}',
-                              style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
-                            ),
-                          ),
                         IconButton(
                           icon: const Icon(Icons.edit),
                           onPressed: () => _showEditEntryDialog(context, entry),
@@ -427,16 +457,16 @@ class _HomePageState extends State<HomePage> {
                             final confirm = await showDialog<bool>(
                               context: context,
                               builder: (context) => AlertDialog(
-                                title: const Text('Delete Entry'),
-                                content: const Text('Are you sure you want to delete this entry?'),
+                                title: Text(AppStrings.get('deleteEntry')),
+                                content: Text(AppStrings.get('deleteConfirm')),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.of(context).pop(false),
-                                    child: const Text('Cancel'),
+                                    child: Text(AppStrings.get('cancel')),
                                   ),
                                   TextButton(
                                     onPressed: () => Navigator.of(context).pop(true),
-                                    child: const Text('Delete'),
+                                    child: Text(AppStrings.get('delete')),
                                   ),
                                 ],
                               ),
@@ -502,31 +532,70 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     for (final e in entries) {
       csvBuffer.writeln('${e['date']},${e['time']},${e['value']},${e['option']},${e['symptoms'] ?? ''}');
     }
-    // Save to file or share (for now, just show dialog with CSV)
+    // Save to Downloads directory
+    final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/peakflow_export_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final file = File(filePath);
+    await file.writeAsString(csvBuffer.toString());
     await showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Exported CSV'),
-        content: SingleChildScrollView(child: Text(csvBuffer.toString())),
-        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+        title: const Text('CSV Exported'),
+        content: Text('CSV file saved to:\n$filePath'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              OpenFile.open(filePath);
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Open'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
 
   Future<void> _exportChart(BuildContext context, GlobalKey chartKey) async {
-    // Render chart as image and show in dialog (for now)
+    // Render chart as image and save to file
     final boundary = chartKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary != null) {
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData != null) {
         final pngBytes = byteData.buffer.asUint8List();
+        final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+        final filePath = '${directory.path}/peakflow_chart_${DateTime.now().millisecondsSinceEpoch}.png';
+        final file = File(filePath);
+        await file.writeAsBytes(pngBytes);
         await showDialog(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Exported Chart Image'),
-            content: Image.memory(pngBytes),
-            actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+            title: const Text('Chart Image Exported'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.memory(pngBytes, height: 150),
+                const SizedBox(height: 12),
+                Text('Image file saved to:\n$filePath'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  OpenFile.open(filePath);
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text('Open'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
           ),
         );
       }
@@ -652,7 +721,9 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                             });
                           }
                         },
-                        child: Text(_startDate == null ? 'Start Date' : 'Start: ${_startDate!.year}-${_startDate!.month.toString().padLeft(2, '0')}-${_startDate!.day.toString().padLeft(2, '0')}'),
+            child: Text(_startDate == null
+              ? AppStrings.get('startDate')
+              : '${AppStrings.get('start')}: ${_startDate!.year}-${_startDate!.month.toString().padLeft(2, '0')}-${_startDate!.day.toString().padLeft(2, '0')}'),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -671,7 +742,9 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                             });
                           }
                         },
-                        child: Text(_endDate == null ? 'End Date' : 'End: ${_endDate!.year}-${_endDate!.month.toString().padLeft(2, '0')}-${_endDate!.day.toString().padLeft(2, '0')}'),
+            child: Text(_endDate == null
+              ? AppStrings.get('endDate')
+              : '${AppStrings.get('end')}: ${_endDate!.year}-${_endDate!.month.toString().padLeft(2, '0')}-${_endDate!.day.toString().padLeft(2, '0')}'),
                       ),
                     ),
                     IconButton(

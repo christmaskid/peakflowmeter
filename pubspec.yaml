@@ -14,6 +14,8 @@ dependencies:
   sqflite: ^2.4.2
   path: ^1.9.1
   fl_chart: ^1.1.0 # Use the latest version available
+  path_provider: ^2.1.3
+  open_file: ^3.3.2
 
 
 dev_dependencies:
