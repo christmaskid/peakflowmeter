@@ -38,8 +38,8 @@ class _HomePageState extends State<HomePage> {
   late Future<void> _dbInitFuture;
   final TextEditingController valueController = TextEditingController();
   final TextEditingController symptomsController = TextEditingController();
-  String selectedOption = 'Morning';
-  final List<String> options = ['Morning', 'Night', 'Symptomatic'];
+  String selectedOption = 'morning';
+  final List<String> options = ['morning', 'night', 'symptomatic'];
 
   @override
   void initState() {
@@ -133,11 +133,11 @@ class _HomePageState extends State<HomePage> {
                       items: options.map((option) {
                         return DropdownMenuItem(
                           value: option,
-                          child: Text(AppStrings.get(option.toLowerCase())),
+                          child: Text(AppStrings.get(option)),
                         );
                       }).toList(),
                     ),
-                    if (selectedOption == 'Symptomatic')
+                    if (selectedOption == 'symptomatic')
                       TextField(
                         controller: symptomsController,
                         decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
@@ -212,7 +212,7 @@ class _HomePageState extends State<HomePage> {
                 TextButton(
                   onPressed: () {
                     final value = int.tryParse(valueController.text) ?? 0;
-                    final symptoms = selectedOption == 'Symptomatic' ? symptomsController.text : '';
+                    final symptoms = selectedOption == 'symptomatic' ? symptomsController.text : '';
                     _addEntry(value, selectedOption, symptoms, selectedDateTime);
                     valueController.clear();
                     symptomsController.clear();
@@ -230,7 +230,7 @@ class _HomePageState extends State<HomePage> {
 
   void _showEditEntryDialog(BuildContext context, Map<String, dynamic> entry) {
     valueController.text = entry['value'].toString();
-    selectedOption = entry['option'] ?? options[0];
+  selectedOption = (entry['option'] ?? options[0]).toString().toLowerCase();
     symptomsController.text = entry['symptoms'] ?? '';
     DateTime selectedDateTime = DateTime.tryParse('${entry['date']} ${entry['time']}') ?? DateTime.now();
     showDialog(
@@ -260,11 +260,11 @@ class _HomePageState extends State<HomePage> {
                       items: options.map((option) {
                         return DropdownMenuItem(
                           value: option,
-                          child: Text(AppStrings.get(option.toLowerCase())),
+                          child: Text(AppStrings.get(option)),
                         );
                       }).toList(),
                     ),
-                    if (selectedOption == 'Symptomatic')
+                    if (selectedOption == 'symptomatic')
                       TextField(
                         controller: symptomsController,
                         decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
@@ -434,15 +434,62 @@ class _HomePageState extends State<HomePage> {
                   final date = entry['date'] ?? '';
                   final time = entry['time'] ?? '';
                   final value = entry['value']?.toString() ?? '';
-                  final option = entry['option'] ?? '';
+                  final option = (entry['option'] ?? '').toString().toLowerCase();
                   final symptoms = (entry['symptoms'] != null && entry['symptoms'].toString().trim().isNotEmpty)
-                      ? ' (${entry['symptoms']})'
-                      : '';
-                  final display = '$date $time $value $option$symptoms';
+                      ? entry['symptoms'].toString().trim()
+                      : null;
+                  Color optionColor;
+                  switch (option) {
+                    case 'morning':
+                      optionColor = Colors.red;
+                      break;
+                    case 'night':
+                      optionColor = Colors.green;
+                      break;
+                    case 'symptomatic':
+                      optionColor = Colors.orange;
+                      break;
+                    default:
+                      optionColor = Colors.black;
+                  }
                   return ListTile(
-                    title: Text(
-                      display,
-                      style: const TextStyle(fontSize: 20),
+                    title: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          date,
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          AppStrings.get(option),
+                          style: TextStyle(fontSize: 16, color: optionColor, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          value,
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black),
+                        ),
+                      ],
+                    ),
+                    subtitle: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          time,
+                          style: const TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                        if (symptoms != null) ...[
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              symptoms,
+                              style: const TextStyle(fontSize: 14, color: Colors.grey),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -536,12 +583,13 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
     final filePath = '${directory.path}/peakflow_export_${DateTime.now().millisecondsSinceEpoch}.csv';
     final file = File(filePath);
+
     await file.writeAsString(csvBuffer.toString());
     await showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('CSV Exported'),
-        content: Text('CSV file saved to:\n$filePath'),
+        title: Text(AppStrings.get('csvExported')),
+        content: Text(AppStrings.get('csvSave') + ':\n$filePath'),
         actions: [
           TextButton(
             onPressed: () {
@@ -570,17 +618,18 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
         final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
         final filePath = '${directory.path}/peakflow_chart_${DateTime.now().millisecondsSinceEpoch}.png';
         final file = File(filePath);
+
         await file.writeAsBytes(pngBytes);
         await showDialog(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('Chart Image Exported'),
+            title: Text(AppStrings.get('chartImageExported')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Image.memory(pngBytes, height: 150),
                 const SizedBox(height: 12),
-                Text('Image file saved to:\n$filePath'),
+                Text(AppStrings.get('chartImageSave') + ':\n$filePath'),
               ],
             ),
             actions: [
@@ -589,11 +638,11 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   OpenFile.open(filePath);
                   Navigator.pop(dialogContext);
                 },
-                child: const Text('Open'),
+                child: Text(AppStrings.get('open')),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Close'),
+                child: Text(AppStrings.get('close')),
               ),
             ],
           ),
@@ -692,8 +741,8 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'export_data', child: Text('Export Data (CSV)')),
-              const PopupMenuItem(value: 'export_chart', child: Text('Export Chart (Image)')),
+              PopupMenuItem(value: 'export_data', child: Text(AppStrings.get('exportDataCSV'))),
+              PopupMenuItem(value: 'export_chart', child: Text(AppStrings.get('exportChartImage'))),
             ],
           ),
         ],
@@ -764,9 +813,9 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   children: [
                     Expanded(
                       child: TextField(
-                        decoration: const InputDecoration(
-                          labelText: 'Upper Threshold',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.get('upperThreshold'),
+                          border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
                         controller: _threshold1Controller,
@@ -775,9 +824,9 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
-                        decoration: const InputDecoration(
-                          labelText: 'Lower Threshold',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.get('lowerThreshold'),
+                          border: const OutlineInputBorder(),
                         ),
                         keyboardType: TextInputType.number,
                         controller: _threshold2Controller,
@@ -810,9 +859,9 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   }).toList();
                 }
                 if (entries.length < 2) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'Not enough data to display a graph. Add at least 2 entries.',
+                      AppStrings.get('notEnoughData'),
                       style: TextStyle(fontSize: 18),
                       textAlign: TextAlign.center,
                     ),
@@ -827,18 +876,33 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                 });
                 final spots = <FlSpot>[];
                 final types = <String>[];
-                final dateLabels = <int, String>{};
+                final dateLabels = <double, String>{};
+                // Use time since first entry as x value (in days, with fraction for time)
+                if (sortedEntries.isEmpty) {
+                  return const SizedBox();
+                }
+                final firstDateTime = DateTime.tryParse((sortedEntries.last['date'] ?? '') + ' ' + (sortedEntries.last['time'] ?? '00:00')) ?? DateTime(1900);
                 for (var i = 0; i < sortedEntries.length; i++) {
                   final entry = sortedEntries[i];
-                  spots.add(FlSpot(i.toDouble(), (entry['value'] as int).toDouble()));
+                  final dateStr = entry['date'] ?? '';
+                  final timeStr = entry['time'] ?? '00:00';
+                  final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
+                  final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
+                  spots.add(FlSpot(x, (entry['value'] as int).toDouble()));
                   types.add((entry['option'] as String?)?.toLowerCase() ?? '');
-                  dateLabels[i] = entry['date'] ?? '';
+                  // Only keep the day part for the label
+                  String dayLabel = '';
+                  if (dateStr.length >= 10) {
+                    // Expecting format YYYY-MM-DD
+                    dayLabel = dateStr.substring(8, 10);
+                  }
+                  dateLabels[x] = dayLabel;
                 }
                 Color getDotColor(String type) {
                   switch (type) {
                     case 'morning':
                       return Colors.red;
-                    case 'night':
+                    case 'evening':
                     case 'evening':
                       return Colors.green;
                     case 'symptomatic':
@@ -906,8 +970,17 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                               showTitles: true,
                               interval: 1,
                               getTitlesWidget: (value, meta) {
-                                final idx = value.toInt();
-                                final label = dateLabels[idx] ?? '';
+                                // Show only the day part as label
+                                String label = '';
+                                double? closest;
+                                for (final k in dateLabels.keys) {
+                                  if (closest == null || (k - value).abs() < (closest - value).abs()) {
+                                    closest = k;
+                                  }
+                                }
+                                if (closest != null && (closest - value).abs() < 0.5) {
+                                  label = dateLabels[closest] ?? '';
+                                }
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 8.0),
                                   child: Text(
