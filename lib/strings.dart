@@ -1,3 +1,13 @@
+class AppConsts{
+  static const String dbName = 'peakflow.db';
+  static const String entriesTable = 'entries';
+  static const String settingsTable = 'settings';
+
+  static const double upperThreshold = 200;
+  static const double lowerThreshold = 100;
+}
+
+
 // All user-facing strings for easy translation
 
 class AppStrings {
@@ -6,6 +16,7 @@ class AppStrings {
   static const Map<String, Map<String, String>> _localizedValues = {
     'en': {
       'appTitle': 'Peak Flow Meter',
+      'graphTitle': 'Graph',
       'addEntry': 'Add Entry',
       'editEntry': 'Edit Entry',
       'peakFlowValue': 'Peak Flow Value',
@@ -50,6 +61,7 @@ class AppStrings {
     },
     'zh': {
       'appTitle': '尖端吐氣流量值紀錄',
+      'graphTitle': '圖表',
       'addEntry': '新增紀錄',
       'editEntry': '編輯記錄',
       'peakFlowValue': '尖端吐氣流量值',

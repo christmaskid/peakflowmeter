@@ -1,131 +1,1042 @@
-import 'dart:async';
-
-import 'package:flutter/widgets.dart';
-import 'package:path/path.dart';
+import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'strings.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 
-void main() async {
-  // Avoid errors caused by flutter upgrade.
-  // Importing 'package:flutter/widgets.dart' is required.
-  WidgetsFlutterBinding.ensureInitialized();
-  // Open the database and store the reference.
-  final database = openDatabase(
-    // Set the path to the database. Note: Using the `join` function from the
-    // `path` package is best practice to ensure the path is correctly
-    // constructed for each platform.
-    join(await getDatabasesPath(), 'doggie_database.db'),
-    // When the database is first created, create a table to store dogs.
-    onCreate: (db, version) {
-      // Run the CREATE TABLE statement on the database.
-      return db.execute(
-        'CREATE TABLE dogs(id INTEGER PRIMARY KEY, name TEXT, age INTEGER)',
-      );
-    },
-    // Set the version. This executes the onCreate function and provides a
-    // path to perform database upgrades and downgrades.
-    version: 1,
-  );
-
-  // Define a function that inserts dogs into the database
-  Future<void> insertDog(Dog dog) async {
-    // Get a reference to the database.
-    final db = await database;
-
-    // Insert the Dog into the correct table. You might also specify the
-    // `conflictAlgorithm` to use in case the same dog is inserted twice.
-    //
-    // In this case, replace any previous data.
-    await db.insert(
-      'dogs',
-      dog.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  // A method that retrieves all the dogs from the dogs table.
-  Future<List<Dog>> dogs() async {
-    // Get a reference to the database.
-    final db = await database;
-
-    // Query the table for all the dogs.
-    final List<Map<String, Object?>> dogMaps = await db.query('dogs');
-
-    // Convert the list of each dog's fields into a list of `Dog` objects.
-    return [
-      for (final {'id': id as int, 'name': name as String, 'age': age as int}
-          in dogMaps)
-        Dog(id: id, name: name, age: age),
-    ];
-  }
-
-  Future<void> updateDog(Dog dog) async {
-    // Get a reference to the database.
-    final db = await database;
-
-    // Update the given Dog.
-    await db.update(
-      'dogs',
-      dog.toMap(),
-      // Ensure that the Dog has a matching id.
-      where: 'id = ?',
-      // Pass the Dog's id as a whereArg to prevent SQL injection.
-      whereArgs: [dog.id],
-    );
-  }
-
-  Future<void> deleteDog(int id) async {
-    // Get a reference to the database.
-    final db = await database;
-
-    // Remove the Dog from the database.
-    await db.delete(
-      'dogs',
-      // Use a `where` clause to delete a specific dog.
-      where: 'id = ?',
-      // Pass the Dog's id as a whereArg to prevent SQL injection.
-      whereArgs: [id],
-    );
-  }
-
-  // Create a Dog and add it to the dogs table
-  var fido = Dog(id: 0, name: 'Fido', age: 35);
-
-  await insertDog(fido);
-
-  // Now, use the method above to retrieve all the dogs.
-  print(await dogs()); // Prints a list that include Fido.
-
-  // Update Fido's age and save it to the database.
-  fido = Dog(id: fido.id, name: fido.name, age: fido.age + 7);
-  await updateDog(fido);
-
-  // Print the updated results.
-  print(await dogs()); // Prints Fido with age 42.
-
-  // Delete Fido from the database.
-  await deleteDog(fido.id);
-
-  // Print the list of dogs (empty).
-  print(await dogs());
+void main() {
+  runApp(const MyApp());
 }
 
-class Dog {
-  final int id;
-  final String name;
-  final int age;
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
-  Dog({required this.id, required this.name, required this.age});
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Peak Flow Meter',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const HomePage(),
+    );
+  }
+}
 
-  // Convert a Dog into a Map. The keys must correspond to the names of the
-  // columns in the database.
-  Map<String, Object?> toMap() {
-    return {'id': id, 'name': name, 'age': age};
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late Database database;
+  late Future<void> _dbInitFuture;
+  final TextEditingController valueController = TextEditingController();
+  final TextEditingController symptomsController = TextEditingController();
+  String selectedOption = 'morning';
+  final List<String> options = ['morning', 'night', 'symptomatic'];
+
+  @override
+  void initState() {
+    super.initState();
+    _dbInitFuture = _initDatabase();
   }
 
-  // Implement toString to make it easier to see information about
-  // each dog when using the print statement.
+  Future<void> _initDatabase() async {
+    database = await openDatabase(
+      join(await getDatabasesPath(), 'peakflow.db'),
+      onCreate: (db, version) async {
+        await db.execute(
+          'CREATE TABLE entries(id INTEGER PRIMARY KEY, date TEXT, time TEXT, value INTEGER, option TEXT, symptoms TEXT)'
+        );
+        await db.execute(
+          'CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)'
+        );
+      },
+      version: 1,
+    );
+    // Ensure settings table exists (for upgrades)
+    await database.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)');
+  }
+
+
+  Future<void> _addEntry(int value, String option, String symptoms, DateTime dateTime) async {
+    await database.insert(
+      'entries',
+      {
+        'date': '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
+        'time': '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
+        'value': value,
+        'option': option,
+        'symptoms': symptoms,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    setState(() {});
+  }
+
+  Future<void> _updateEntry(int id, int value, String option, String symptoms, DateTime dateTime) async {
+    await database.update(
+      'entries',
+      {
+        'date': '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
+        'time': '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
+        'value': value,
+        'option': option,
+        'symptoms': symptoms,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    setState(() {});
+  }
+
+  Future<void> _deleteEntry(int id) async {
+    await database.delete('entries', where: 'id = ?', whereArgs: [id]);
+    setState(() {});
+  }
+
+  Future<List<Map<String, dynamic>>> _getEntries() async {
+    return await database.query('entries');
+  }
+  void _showAddEntryDialog(BuildContext context) {
+    DateTime selectedDateTime = DateTime.now();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text(AppStrings.get('addEntry')),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: valueController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(labelText: AppStrings.get('peakFlowValue')),
+                    ),
+                    DropdownButton<String>(
+                      value: selectedOption,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedOption = value!;
+                        });
+                        setStateDialog(() {});
+                      },
+                      items: options.map((option) {
+                        return DropdownMenuItem(
+                          value: option,
+                          child: Text(AppStrings.get(option)),
+                        );
+                      }).toList(),
+                    ),
+                    if (selectedOption == 'symptomatic')
+                      TextField(
+                        controller: symptomsController,
+                        decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('${AppStrings.get('date')}: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDateTime,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setStateDialog(() {
+                                selectedDateTime = DateTime(
+                                  picked.year,
+                                  picked.month,
+                                  picked.day,
+                                  selectedDateTime.hour,
+                                  selectedDateTime.minute,
+                                );
+                              });
+                            }
+                          },
+                          child: Text(AppStrings.get('pickDate')),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('${AppStrings.get('time')}: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(selectedDateTime),
+                            );
+                            if (picked != null) {
+                              setStateDialog(() {
+                                selectedDateTime = DateTime(
+                                  selectedDateTime.year,
+                                  selectedDateTime.month,
+                                  selectedDateTime.day,
+                                  picked.hour,
+                                  picked.minute,
+                                );
+                              });
+                            }
+                          },
+                          child: Text(AppStrings.get('pickTime')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(AppStrings.get('cancel')),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final value = int.tryParse(valueController.text) ?? 0;
+                    final symptoms = selectedOption == 'symptomatic' ? symptomsController.text : '';
+                    _addEntry(value, selectedOption, symptoms, selectedDateTime);
+                    valueController.clear();
+                    symptomsController.clear();
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(AppStrings.get('add')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEditEntryDialog(BuildContext context, Map<String, dynamic> entry) {
+    valueController.text = entry['value'].toString();
+  selectedOption = (entry['option'] ?? options[0]).toString().toLowerCase();
+    symptomsController.text = entry['symptoms'] ?? '';
+    DateTime selectedDateTime = DateTime.tryParse('${entry['date']} ${entry['time']}') ?? DateTime.now();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text(AppStrings.get('editEntry')),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: valueController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(labelText: AppStrings.get('peakFlowValue')),
+                    ),
+                    DropdownButton<String>(
+                      value: selectedOption,
+                      onChanged: (value) {
+                        setState(() {
+                          selectedOption = value!;
+                        });
+                        setStateDialog(() {});
+                      },
+                      items: options.map((option) {
+                        return DropdownMenuItem(
+                          value: option,
+                          child: Text(AppStrings.get(option)),
+                        );
+                      }).toList(),
+                    ),
+                    if (selectedOption == 'symptomatic')
+                      TextField(
+                        controller: symptomsController,
+                        decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('${AppStrings.get('date')}: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDateTime,
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setStateDialog(() {
+                                selectedDateTime = DateTime(
+                                  picked.year,
+                                  picked.month,
+                                  picked.day,
+                                  selectedDateTime.hour,
+                                  selectedDateTime.minute,
+                                );
+                              });
+                            }
+                          },
+                          child: Text(AppStrings.get('pickDate')),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('${AppStrings.get('time')}: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.fromDateTime(selectedDateTime),
+                            );
+                            if (picked != null) {
+                              setStateDialog(() {
+                                selectedDateTime = DateTime(
+                                  selectedDateTime.year,
+                                  selectedDateTime.month,
+                                  selectedDateTime.day,
+                                  picked.hour,
+                                  picked.minute,
+                                );
+                              });
+                            }
+                          },
+                          child: Text(AppStrings.get('pickTime')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(AppStrings.get('cancel')),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final value = int.tryParse(valueController.text) ?? 0;
+                    final symptoms = selectedOption == 'symptomatic' ? symptomsController.text : '';
+                    _updateEntry(entry['id'], value, selectedOption, symptoms, selectedDateTime);
+                    valueController.clear();
+                    symptomsController.clear();
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(AppStrings.get('save')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _navigateToGraphPage(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => GraphPage(database: database),
+      ),
+    );
+  }
+
   @override
-  String toString() {
-    return 'Dog{id: $id, name: $name, age: $age}';
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(AppStrings.get('appTitle')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.show_chart),
+            onPressed: () => _navigateToGraphPage(context),
+          ),
+          DropdownButton<String>(
+            value: AppStrings.currentLanguage,
+            icon: const Icon(Icons.language, color: Colors.white),
+            underline: Container(),
+            dropdownColor: Colors.white,
+            onChanged: (String? lang) {
+              if (lang != null) {
+                setState(() {
+                  AppStrings.currentLanguage = lang;
+                });
+              }
+            },
+            items: [
+              DropdownMenuItem(
+                value: 'en',
+                child: Text(AppStrings.get('english')),
+              ),
+              DropdownMenuItem(
+                value: 'zh',
+                child: Text(AppStrings.get('chinese')),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: FutureBuilder<void>(
+        future: _dbInitFuture,
+        builder: (context, dbSnapshot) {
+          if (dbSnapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: _getEntries(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              List<Map<String, dynamic>> entries = snapshot.data!;
+              if (entries.isEmpty) {
+                return Center(
+                  child: Text(
+                    AppStrings.get('noEntries'),
+                    style: const TextStyle(fontSize: 20),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+              // Sort entries by date and time descending
+              entries = List<Map<String, dynamic>>.from(entries);
+              entries.sort((a, b) {
+                final dateA = DateTime.tryParse((a['date'] ?? '') + ' ' + (a['time'] ?? '00:00')) ?? DateTime(1900);
+                final dateB = DateTime.tryParse((b['date'] ?? '') + ' ' + (b['time'] ?? '00:00')) ?? DateTime(1900);
+                return dateB.compareTo(dateA);
+              });
+              return ListView.builder(
+                itemCount: entries.length,
+                itemBuilder: (context, index) {
+                  final entry = entries[index];
+                  final date = entry['date'] ?? '';
+                  final time = entry['time'] ?? '';
+                  final value = entry['value']?.toString() ?? '';
+                  final option = (entry['option'] ?? '').toString().toLowerCase();
+                  final symptoms = (entry['symptoms'] != null && entry['symptoms'].toString().trim().isNotEmpty)
+                      ? entry['symptoms'].toString().trim()
+                      : null;
+                  Color optionColor;
+                  switch (option) {
+                    case 'morning':
+                      optionColor = Colors.red;
+                      break;
+                    case 'night':
+                      optionColor = Colors.green;
+                      break;
+                    case 'symptomatic':
+                      optionColor = Colors.orange;
+                      break;
+                    default:
+                      optionColor = Colors.black;
+                  }
+                  return ListTile(
+                    title: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            date,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            AppStrings.get(option),
+                            style: TextStyle(fontSize: 16, color: optionColor, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            value,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                          ),
+                        ],
+                      ),
+                    ),
+                    subtitle: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            time,
+                            style: const TextStyle(fontSize: 14, color: Colors.grey),
+                          ),
+                          if (symptoms != null) ...[
+                            const SizedBox(width: 12),
+                            Text(
+                              symptoms,
+                              style: const TextStyle(fontSize: 14, color: Colors.grey),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    trailing: SizedBox(
+                      width: 96, // Fixed width for buttons
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            onPressed: () => _showEditEntryDialog(context, entry),
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, size: 20),
+                            onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text(AppStrings.get('deleteEntry')),
+                                content: Text(AppStrings.get('deleteConfirm')),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(false),
+                                    child: Text(AppStrings.get('cancel')),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).pop(true),
+                                    child: Text(AppStrings.get('delete')),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              _deleteEntry(entry['id']);
+                            }
+                          },
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddEntryDialog(context),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class GraphPage extends StatelessWidget {
+  final Database database;
+
+  const GraphPage({super.key, required this.database});
+
+  Future<List<Map<String, dynamic>>> _getEntryList() async {
+    return await database.query('entries');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _GraphPageWithRange(database: database);
+  }
+}
+
+class _GraphPageWithRange extends StatefulWidget {
+  final Database database;
+  const _GraphPageWithRange({super.key, required this.database});
+
+  @override
+  State<_GraphPageWithRange> createState() => _GraphPageWithRangeState();
+}
+
+// Graph page
+class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
+  final GlobalKey _chartKey = GlobalKey();
+  DateTime? _startDate;
+  DateTime? _endDate;
+  double _threshold1 = AppConsts.upperThreshold; // default
+  double _threshold2 = AppConsts.lowerThreshold; // default
+  late TextEditingController _threshold1Controller;
+  late TextEditingController _threshold2Controller;
+
+  Future<void> _exportData(BuildContext context, List<Map<String, dynamic>> entries) async {
+    // Generate CSV string
+    final csvBuffer = StringBuffer();
+    csvBuffer.writeln('date,time,value,option,symptoms');
+    for (final e in entries) {
+      csvBuffer.writeln('${e['date']},${e['time']},${e['value']},${e['option']},${e['symptoms'] ?? ''}');
+    }
+    // Save to Downloads directory
+    final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/peakflow_export_${DateTime.now().millisecondsSinceEpoch}.csv';
+    final file = File(filePath);
+
+    await file.writeAsString(csvBuffer.toString());
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(AppStrings.get('csvExported')),
+        content: Text(AppStrings.get('csvSave') + ':\n$filePath'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              OpenFile.open(filePath);
+              Navigator.pop(dialogContext);
+            },
+            child: Text(AppStrings.get('open')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AppStrings.get('close')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportChart(BuildContext context, GlobalKey chartKey) async {
+    // Render chart as image and save to file
+    final boundary = chartKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary != null) {
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData != null) {
+        final pngBytes = byteData.buffer.asUint8List();
+        final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+        final filePath = '${directory.path}/peakflow_chart_${DateTime.now().millisecondsSinceEpoch}.png';
+        final file = File(filePath);
+
+        await file.writeAsBytes(pngBytes);
+        await showDialog(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(AppStrings.get('chartImageExported')),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.memory(pngBytes, height: 150),
+                const SizedBox(height: 12),
+                Text(AppStrings.get('chartImageSave') + ':\n$filePath'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  OpenFile.open(filePath);
+                  Navigator.pop(dialogContext);
+                },
+                child: Text(AppStrings.get('open')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(AppStrings.get('close')),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  Future<String?> _getSetting(String key) async {
+    final db = widget.database;
+    final result = await db.query('settings', where: 'key = ?', whereArgs: [key]);
+    if (result.isNotEmpty) return result.first['value'] as String?;
+    return null;
+  }
+
+  Future<void> _setSetting(String key, String value) async {
+    final db = widget.database;
+    await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> _loadThresholds() async {
+    final upper = await _getSetting('upper_threshold');
+    final lower = await _getSetting('lower_threshold');
+    setState(() {
+      if (upper != null) {
+        _threshold1 = double.tryParse(upper) ?? _threshold1;
+        _threshold1Controller.text = _threshold1.toString();
+      }
+      if (lower != null) {
+        _threshold2 = double.tryParse(lower) ?? _threshold2;
+        _threshold2Controller.text = _threshold2.toString();
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _threshold1Controller = TextEditingController(text: _threshold1.toString());
+    _threshold2Controller = TextEditingController(text: _threshold2.toString());
+    _threshold1Controller.addListener(() {
+      final d = double.tryParse(_threshold1Controller.text);
+      if (d != null && d != _threshold1) {
+        setState(() => _threshold1 = d);
+        _setSetting('upper_threshold', d.toString());
+      }
+    });
+    _threshold2Controller.addListener(() {
+      final d = double.tryParse(_threshold2Controller.text);
+      if (d != null && d != _threshold2) {
+        setState(() => _threshold2 = d);
+        _setSetting('lower_threshold', d.toString());
+      }
+    });
+    _loadThresholds();
+  }
+
+  @override
+  void dispose() {
+    _threshold1Controller.dispose();
+    _threshold2Controller.dispose();
+    super.dispose();
+  }
+
+  Future<List<Map<String, dynamic>>> _getEntryList() async {
+    return await widget.database.query('entries');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+
+      // Graph page top bar with export menu
+      appBar: AppBar(
+        title: Text(AppStrings.get('graphTitle')),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'export_data') {
+                // Export currently displayed data
+                final entries = await _getEntryList();
+                List<Map<String, dynamic>> filtered = entries;
+                if (_startDate != null) {
+                  filtered = filtered.where((e) {
+                    final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                    return !date.isBefore(_startDate!);
+                  }).toList();
+                }
+                if (_endDate != null) {
+                  filtered = filtered.where((e) {
+                    final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                    return !date.isAfter(_endDate!);
+                  }).toList();
+                }
+                await _exportData(context, filtered);
+              } else if (value == 'export_chart') {
+                await _exportChart(context, _chartKey);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(value: 'export_data', child: Text(AppStrings.get('exportDataCSV'))),
+              PopupMenuItem(value: 'export_chart', child: Text(AppStrings.get('exportChartImage'))),
+            ],
+          ),
+        ],
+      ),
+
+      // Graph page body with date range selectors and chart
+      body: SingleChildScrollView(
+        // Select date interval
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _startDate ?? DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                _startDate = picked;
+                              });
+                            }
+                          },
+                          child: Text(_startDate == null
+                            ? AppStrings.get('startDate')
+                            : '${AppStrings.get('start')}: ${_startDate!.year}-${_startDate!.month.toString().padLeft(2, '0')}-${_startDate!.day.toString().padLeft(2, '0')}',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _endDate ?? DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                _endDate = picked;
+                              });
+                            }
+                          },
+                          child: Text(_endDate == null
+                            ? AppStrings.get('endDate')
+                            : '${AppStrings.get('end')}: ${_endDate!.year}-${_endDate!.month.toString().padLeft(2, '0')}-${_endDate!.day.toString().padLeft(2, '0')}',
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: 'Clear range',
+                        onPressed: () {
+                          setState(() {
+                            _startDate = null;
+                            _endDate = null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          decoration: InputDecoration(
+                            labelText: AppStrings.get('upperThreshold'),
+                            border: const OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                          controller: _threshold1Controller,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          decoration: InputDecoration(
+                            labelText: AppStrings.get('lowerThreshold'),
+                            border: const OutlineInputBorder(),
+                          ),
+                          keyboardType: TextInputType.number,
+                          controller: _threshold2Controller,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Chart
+            Container(
+              height: 400,
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _getEntryList(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  List<Map<String, dynamic>> entries = snapshot.data!;
+                  // Filter by date range if set
+                  if (_startDate != null) {
+                    entries = entries.where((e) {
+                      final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                      return !date.isBefore(_startDate!);
+                    }).toList();
+                  }
+                  if (_endDate != null) {
+                    entries = entries.where((e) {
+                      final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                      return !date.isAfter(_endDate!);
+                    }).toList();
+                  }
+                  if (entries.length < 2) {
+                    return Center(
+                      child: Text(
+                        AppStrings.get('notEnoughData'),
+                        style: TextStyle(fontSize: 18),
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+                  }
+                  // Sort by date and time descending (make a copy first)
+                  final sortedEntries = List<Map<String, dynamic>>.from(entries);
+                  sortedEntries.sort((a, b) {
+                    final dateA = DateTime.tryParse((a['date'] ?? '') + ' ' + (a['time'] ?? '00:00')) ?? DateTime(1900);
+                    final dateB = DateTime.tryParse((b['date'] ?? '') + ' ' + (b['time'] ?? '00:00')) ?? DateTime(1900);
+                    return dateB.compareTo(dateA);
+                  });
+                  final spots = <FlSpot>[];
+                  final types = <String>[];
+                  final dateLabels = <double, String>{};
+                  // Use time since first entry as x value (in days, with fraction for time)
+                  if (sortedEntries.isEmpty) {
+                    return const SizedBox();
+                  }
+                  final firstDateTime = DateTime.tryParse((sortedEntries.last['date'] ?? '') + ' ' + (sortedEntries.last['time'] ?? '00:00')) ?? DateTime(1900);
+                  for (var i = 0; i < sortedEntries.length; i++) {
+                    final entry = sortedEntries[i];
+                    final dateStr = entry['date'] ?? '';
+                    final timeStr = entry['time'] ?? '00:00';
+                    final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
+                    final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
+                    spots.add(FlSpot(x, (entry['value'] as int).toDouble()));
+                    types.add((entry['option'] as String?)?.toLowerCase() ?? '');
+                    // Only keep the day part for the label
+                    String dayLabel = '';
+                    if (dateStr.length >= 10) {
+                      // Expecting format YYYY-MM-DD
+                      dayLabel = dateStr.substring(8, 10);
+                    }
+                    dateLabels[x] = dayLabel;
+                  }
+                  Color getDotColor(String type) {
+                    switch (type) {
+                      case 'morning':
+                        return Colors.red;
+                      case 'night':
+                        return Colors.green;
+                      case 'symptomatic':
+                        return Colors.orange;
+                      default:
+                        return Colors.black;
+                    }
+                  }
+                  double upper = _threshold1 > _threshold2 ? _threshold1 : _threshold2;
+                  double lower = _threshold1 > _threshold2 ? _threshold2 : _threshold1;
+                  return Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: RepaintBoundary(
+                      key: _chartKey,
+                      child: Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.only(top: 20.0, right: 20.0, left: 8.0, bottom: 8.0),
+                        child: LineChart(
+                          LineChartData(
+                            minY: 0,
+                            maxY: 300,
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: spots,
+                                isCurved: false,
+                                barWidth: 4,
+                                gradient: LinearGradient(
+                                  colors: [Colors.black, Colors.black],
+                                ),
+                                belowBarData: BarAreaData(show: false),
+                                dotData: FlDotData(
+                                  show: true,
+                                  getDotPainter: (spot, percent, barData, index) {
+                                    final type = (index < types.length) ? types[index] : '';
+                                    return FlDotCirclePainter(
+                                      radius: 6,
+                                      color: getDotColor(type),
+                                      strokeWidth: 2,
+                                      strokeColor: Colors.white,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                            rangeAnnotations: RangeAnnotations(
+                              horizontalRangeAnnotations: [
+                                HorizontalRangeAnnotation(
+                                  y1: 0,
+                                  y2: lower,
+                                  color: Colors.red, //.withOpacity(0.2),
+                                ),
+                                HorizontalRangeAnnotation(
+                                  y1: lower,
+                                  y2: upper,
+                                  color: Colors.yellow, //.withOpacity(0.2),
+                                ),
+                                HorizontalRangeAnnotation(
+                                  y1: upper,
+                                  y2: 300,
+                                  color: Colors.green, //.withOpacity(0.2),
+                                ),
+                              ],
+                            ),
+                            titlesData: FlTitlesData(
+                              show: true,
+                              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: 40,
+                                  interval: 50,
+                                ),
+                              ),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  interval: 1,
+                                  getTitlesWidget: (value, meta) {
+                                    // Show only the day part as label
+                                    String label = '';
+                                    double? closest;
+                                    for (final k in dateLabels.keys) {
+                                      if (closest == null || (k - value).abs() < (closest - value).abs()) {
+                                        closest = k;
+                                      }
+                                    }
+                                    if (closest != null && (closest - value).abs() < 0.5) {
+                                      label = dateLabels[closest] ?? '';
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        label,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                            borderData: FlBorderData(show: true),
+                          ),
+                        ),
+                      ),
+                    )
+                  );
+                }, 
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
