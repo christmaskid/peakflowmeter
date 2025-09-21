@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
@@ -8,6 +6,10 @@ import 'strings.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+
+// Add drift imports
+import 'package:drift/drift.dart' as drift;
+import 'drift_db.dart'; // <-- new file you'll create
 
 void main() {
   runApp(const MyApp());
@@ -34,7 +36,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late Database database;
+  late AppDatabase database;
   late Future<void> _dbInitFuture;
   final TextEditingController valueController = TextEditingController();
   final TextEditingController symptomsController = TextEditingController();
@@ -48,61 +50,42 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _initDatabase() async {
-    database = await openDatabase(
-      join(await getDatabasesPath(), 'peakflow.db'),
-      onCreate: (db, version) async {
-        await db.execute(
-          'CREATE TABLE entries(id INTEGER PRIMARY KEY, date TEXT, time TEXT, value INTEGER, option TEXT, symptoms TEXT)'
-        );
-        await db.execute(
-          'CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT)'
-        );
-      },
-      version: 1,
-    );
-    // Ensure settings table exists (for upgrades)
-    await database.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)');
+    database = AppDatabase();
   }
 
-
   Future<void> _addEntry(int value, String option, String symptoms, DateTime dateTime) async {
-    await database.insert(
-      'entries',
-      {
-        'date': '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
-        'time': '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
-        'value': value,
-        'option': option,
-        'symptoms': symptoms,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    await database.into(database.entries).insert(
+      EntriesCompanion.insert(
+        date: '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
+        time: '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
+        value: value,
+        option: option,
+        symptoms: drift.Value(symptoms),
+      ),
     );
     setState(() {});
   }
 
   Future<void> _updateEntry(int id, int value, String option, String symptoms, DateTime dateTime) async {
-    await database.update(
-      'entries',
-      {
-        'date': '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
-        'time': '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
-        'value': value,
-        'option': option,
-        'symptoms': symptoms,
-      },
-      where: 'id = ?',
-      whereArgs: [id],
+    await (database.update(database.entries)..where((tbl) => tbl.id.equals(id))).write(
+      EntriesCompanion(
+        date: drift.Value('${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}'),
+        time: drift.Value('${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}'),
+        value: drift.Value(value),
+        option: drift.Value(option),
+        symptoms: drift.Value(symptoms),
+      ),
     );
     setState(() {});
   }
 
   Future<void> _deleteEntry(int id) async {
-    await database.delete('entries', where: 'id = ?', whereArgs: [id]);
+    await (database.delete(database.entries)..where((tbl) => tbl.id.equals(id))).go();
     setState(() {});
   }
 
-  Future<List<Map<String, dynamic>>> _getEntries() async {
-    return await database.query('entries');
+  Future<List<Entry>> _getEntries() async {
+    return await database.select(database.entries).get();
   }
   void _showAddEntryDialog(BuildContext context) {
     DateTime selectedDateTime = DateTime.now();
@@ -228,11 +211,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _showEditEntryDialog(BuildContext context, Map<String, dynamic> entry) {
-    valueController.text = entry['value'].toString();
-  selectedOption = (entry['option'] ?? options[0]).toString().toLowerCase();
-    symptomsController.text = entry['symptoms'] ?? '';
-    DateTime selectedDateTime = DateTime.tryParse('${entry['date']} ${entry['time']}') ?? DateTime.now();
+  void _showEditEntryDialog(BuildContext context, Entry entry) {
+    valueController.text = entry.value.toString();
+    selectedOption = (entry.option).toString().toLowerCase();
+    symptomsController.text = entry.symptoms ?? '';
+    DateTime selectedDateTime = DateTime.tryParse('${entry.date} ${entry.time}') ?? DateTime.now();
     showDialog(
       context: context,
       builder: (context) {
@@ -340,7 +323,7 @@ class _HomePageState extends State<HomePage> {
                   onPressed: () {
                     final value = int.tryParse(valueController.text) ?? 0;
                     final symptoms = selectedOption == 'symptomatic' ? symptomsController.text : '';
-                    _updateEntry(entry['id'], value, selectedOption, symptoms, selectedDateTime);
+                    _updateEntry(entry.id, value, selectedOption, symptoms, selectedDateTime);
                     valueController.clear();
                     symptomsController.clear();
                     Navigator.of(context).pop();
@@ -404,13 +387,13 @@ class _HomePageState extends State<HomePage> {
           if (dbSnapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
           }
-          return FutureBuilder<List<Map<String, dynamic>>>(
+          return FutureBuilder<List<Entry>>(
             future: _getEntries(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              List<Map<String, dynamic>> entries = snapshot.data!;
+              List<Entry> entries = snapshot.data!;
               if (entries.isEmpty) {
                 return Center(
                   child: Text(
@@ -421,22 +404,22 @@ class _HomePageState extends State<HomePage> {
                 );
               }
               // Sort entries by date and time descending
-              entries = List<Map<String, dynamic>>.from(entries);
+              entries = List<Entry>.from(entries);
               entries.sort((a, b) {
-                final dateA = DateTime.tryParse((a['date'] ?? '') + ' ' + (a['time'] ?? '00:00')) ?? DateTime(1900);
-                final dateB = DateTime.tryParse((b['date'] ?? '') + ' ' + (b['time'] ?? '00:00')) ?? DateTime(1900);
+                final dateA = DateTime.tryParse('${a.date} ${a.time}') ?? DateTime(1900);
+                final dateB = DateTime.tryParse('${b.date} ${b.time}') ?? DateTime(1900);
                 return dateB.compareTo(dateA);
               });
               return ListView.builder(
                 itemCount: entries.length,
                 itemBuilder: (context, index) {
                   final entry = entries[index];
-                  final date = entry['date'] ?? '';
-                  final time = entry['time'] ?? '';
-                  final value = entry['value']?.toString() ?? '';
-                  final option = (entry['option'] ?? '').toString().toLowerCase();
-                  final symptoms = (entry['symptoms'] != null && entry['symptoms'].toString().trim().isNotEmpty)
-                      ? entry['symptoms'].toString().trim()
+                  final date = entry.date;
+                  final time = entry.time;
+                  final value = entry.value.toString();
+                  final option = (entry.option).toString().toLowerCase();
+                  final symptoms = (entry.symptoms != null && entry.symptoms.toString().trim().isNotEmpty)
+                      ? entry.symptoms.toString().trim()
                       : null;
                   Color optionColor;
                   switch (option) {
@@ -508,33 +491,33 @@ class _HomePageState extends State<HomePage> {
                           IconButton(
                             icon: const Icon(Icons.delete, size: 20),
                             onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: Text(AppStrings.get('deleteEntry')),
-                                content: Text(AppStrings.get('deleteConfirm')),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.of(context).pop(false),
-                                    child: Text(AppStrings.get('cancel')),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.of(context).pop(true),
-                                    child: Text(AppStrings.get('delete')),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirm == true) {
-                              _deleteEntry(entry['id']);
-                            }
-                          },
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text(AppStrings.get('deleteEntry')),
+                                  content: Text(AppStrings.get('deleteConfirm')),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(false),
+                                      child: Text(AppStrings.get('cancel')),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(true),
+                                      child: Text(AppStrings.get('delete')),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                _deleteEntry(entry.id);
+                              }
+                            },
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
                       ),
-                    ),
+                    )
                   );
                 },
               );
@@ -551,13 +534,10 @@ class _HomePageState extends State<HomePage> {
 }
 
 class GraphPage extends StatelessWidget {
-  final Database database;
+  final AppDatabase database;
 
   const GraphPage({super.key, required this.database});
 
-  Future<List<Map<String, dynamic>>> _getEntryList() async {
-    return await database.query('entries');
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -566,8 +546,8 @@ class GraphPage extends StatelessWidget {
 }
 
 class _GraphPageWithRange extends StatefulWidget {
-  final Database database;
-  const _GraphPageWithRange({super.key, required this.database});
+  final AppDatabase database;
+  const _GraphPageWithRange({required this.database});
 
   @override
   State<_GraphPageWithRange> createState() => _GraphPageWithRangeState();
@@ -583,12 +563,12 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
   late TextEditingController _threshold1Controller;
   late TextEditingController _threshold2Controller;
 
-  Future<void> _exportData(BuildContext context, List<Map<String, dynamic>> entries) async {
+  Future<void> _exportData(BuildContext context, List<Entry> entries) async {
     // Generate CSV string
     final csvBuffer = StringBuffer();
     csvBuffer.writeln('date,time,value,option,symptoms');
     for (final e in entries) {
-      csvBuffer.writeln('${e['date']},${e['time']},${e['value']},${e['option']},${e['symptoms'] ?? ''}');
+      csvBuffer.writeln('${e.date},${e.time},${e.value},${e.option},${e.symptoms ?? ''}');
     }
     // Save to Downloads directory
     final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
@@ -596,11 +576,12 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     final file = File(filePath);
 
     await file.writeAsString(csvBuffer.toString());
+    if (!mounted) return;
     await showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(AppStrings.get('csvExported')),
-        content: Text(AppStrings.get('csvSave') + ':\n$filePath'),
+        content: Text('${AppStrings.get('csvSave')}:\n$filePath'),
         actions: [
           TextButton(
             onPressed: () {
@@ -631,6 +612,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
         final file = File(filePath);
 
         await file.writeAsBytes(pngBytes);
+        if (!mounted) return;
         await showDialog(
           context: context,
           builder: (dialogContext) => AlertDialog(
@@ -640,7 +622,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
               children: [
                 Image.memory(pngBytes, height: 150),
                 const SizedBox(height: 12),
-                Text(AppStrings.get('chartImageSave') + ':\n$filePath'),
+                Text('${AppStrings.get('chartImageSave')}:\n$filePath'),
               ],
             ),
             actions: [
@@ -664,14 +646,20 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
 
   Future<String?> _getSetting(String key) async {
     final db = widget.database;
-    final result = await db.query('settings', where: 'key = ?', whereArgs: [key]);
-    if (result.isNotEmpty) return result.first['value'] as String?;
+    final query = db.select(db.settings)..where((tbl) => tbl.key.equals(key));
+    final result = await query.get();
+    if (result.isNotEmpty) return result.first.value;
     return null;
   }
 
   Future<void> _setSetting(String key, String value) async {
     final db = widget.database;
-    await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.into(db.settings).insertOnConflictUpdate(
+      SettingsCompanion(
+        key: drift.Value(key),
+        value: drift.Value(value),
+      ),
+    );
   }
 
   Future<void> _loadThresholds() async {
@@ -718,8 +706,8 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     super.dispose();
   }
 
-  Future<List<Map<String, dynamic>>> _getEntryList() async {
-    return await widget.database.query('entries');
+  Future<List<Entry>> _getEntryList() async {
+    return await widget.database.select(widget.database.entries).get();
   }
 
   @override
@@ -735,16 +723,16 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
               if (value == 'export_data') {
                 // Export currently displayed data
                 final entries = await _getEntryList();
-                List<Map<String, dynamic>> filtered = entries;
+                List<Entry> filtered = entries;
                 if (_startDate != null) {
                   filtered = filtered.where((e) {
-                    final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                    final date = DateTime.tryParse(e.date) ?? DateTime(1900);
                     return !date.isBefore(_startDate!);
                   }).toList();
                 }
                 if (_endDate != null) {
                   filtered = filtered.where((e) {
-                    final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                    final date = DateTime.tryParse(e.date) ?? DateTime(1900);
                     return !date.isAfter(_endDate!);
                   }).toList();
                 }
@@ -858,25 +846,25 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
             ),
 
             // Chart
-            Container(
+            SizedBox(
               height: 400,
-              child: FutureBuilder<List<Map<String, dynamic>>>(
+              child: FutureBuilder<List<Entry>>(
                 future: _getEntryList(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  List<Map<String, dynamic>> entries = snapshot.data!;
+                  List<Entry> entries = snapshot.data!;
                   // Filter by date range if set
                   if (_startDate != null) {
                     entries = entries.where((e) {
-                      final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                      final date = DateTime.tryParse(e.date) ?? DateTime(1900);
                       return !date.isBefore(_startDate!);
                     }).toList();
                   }
                   if (_endDate != null) {
                     entries = entries.where((e) {
-                      final date = DateTime.tryParse(e['date'] ?? '') ?? DateTime(1900);
+                      final date = DateTime.tryParse(e.date) ?? DateTime(1900);
                       return !date.isAfter(_endDate!);
                     }).toList();
                   }
@@ -890,10 +878,10 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                     );
                   }
                   // Sort by date and time descending (make a copy first)
-                  final sortedEntries = List<Map<String, dynamic>>.from(entries);
+                  final sortedEntries = List<Entry>.from(entries);
                   sortedEntries.sort((a, b) {
-                    final dateA = DateTime.tryParse((a['date'] ?? '') + ' ' + (a['time'] ?? '00:00')) ?? DateTime(1900);
-                    final dateB = DateTime.tryParse((b['date'] ?? '') + ' ' + (b['time'] ?? '00:00')) ?? DateTime(1900);
+                    final dateA = DateTime.tryParse('${a.date} ${a.time}') ?? DateTime(1900);
+                    final dateB = DateTime.tryParse('${b.date} ${b.time}') ?? DateTime(1900);
                     return dateB.compareTo(dateA);
                   });
                   final spots = <FlSpot>[];
@@ -903,15 +891,15 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   if (sortedEntries.isEmpty) {
                     return const SizedBox();
                   }
-                  final firstDateTime = DateTime.tryParse((sortedEntries.last['date'] ?? '') + ' ' + (sortedEntries.last['time'] ?? '00:00')) ?? DateTime(1900);
+                  final firstDateTime = DateTime.tryParse('${sortedEntries.last.date} ${sortedEntries.last.time}') ?? DateTime(1900);
                   for (var i = 0; i < sortedEntries.length; i++) {
                     final entry = sortedEntries[i];
-                    final dateStr = entry['date'] ?? '';
-                    final timeStr = entry['time'] ?? '00:00';
+                    final dateStr = entry.date;
+                    final timeStr = entry.time;
                     final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
                     final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
-                    spots.add(FlSpot(x, (entry['value'] as int).toDouble()));
-                    types.add((entry['option'] as String?)?.toLowerCase() ?? '');
+                    spots.add(FlSpot(x, (entry.value).toDouble()));
+                    types.add((entry.option as String?)?.toLowerCase() ?? '');
                     // Only keep the day part for the label
                     String dayLabel = '';
                     if (dateStr.length >= 10) {
