@@ -86,9 +86,20 @@ jobs:
           
       - name: Set Development Team
         run: |
-          # Use a more reliable approach with awk
-          awk '/CODE_SIGN_STYLE = Automatic;/ { print; print "\t\t\t\tDEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};"; next }1' ios/Runner.xcodeproj/project.pbxproj > temp.pbxproj && mv temp.pbxproj ios/Runner.xcodeproj/project.pbxproj
+          # Add DEVELOPMENT_TEAM to all build configurations
+          sed -i '' '/PRODUCT_BUNDLE_IDENTIFIER = com.christmaskid.peakflowmeter;/a\
+                DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};
+          ' ios/Runner.xcodeproj/project.pbxproj
 
+      - name: Debug project file
+        run: |
+          echo "=== Current DEVELOPMENT_TEAM entries ==="
+          grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
+          echo "=== Current CODE_SIGN_STYLE entries ==="
+          grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN_STYLE found"
+          echo "=== Current PRODUCT_BUNDLE_IDENTIFIER entries ==="
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
+          
       # Build signed IPA
       - run: |
          flutter build ipa --release
