@@ -104,11 +104,11 @@ jobs:
           # Create with bundle ID that matches provisioning profile
           flutter create --platform=ios --org=${{ secrets.APPLE_TEAM_ID }}.com.christmaskid .
           flutter pub get
-
+        
       - name: Set Development Team
         run: |
-          # Add DEVELOPMENT_TEAM to all build configurations
-          sed -i '' '/PRODUCT_BUNDLE_IDENTIFIER = com.christmaskid.peakflowmeter;/a\
+          # Add DEVELOPMENT_TEAM after any PRODUCT_BUNDLE_IDENTIFIER that contains our app
+          sed -i '' '/PRODUCT_BUNDLE_IDENTIFIER = .*\.com\.christmaskid\.peakflowmeter;/a\
                 DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};
           ' ios/Runner.xcodeproj/project.pbxproj
 
