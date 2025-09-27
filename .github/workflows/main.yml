@@ -84,6 +84,11 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
 
+      # Set Development Team for code signing
+      - name: Set Development Team
+        run: |
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};/' ios/Runner.xcodeproj/project.pbxproj
+
       # Build signed IPA
       - run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
       - uses: actions/upload-artifact@v4
