@@ -84,6 +84,15 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
           
+      - name: Debug project file
+        run: |
+          echo "=== Current DEVELOPMENT_TEAM entries ==="
+          grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
+          echo "=== Current CODE_SIGN_STYLE entries ==="
+          grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN_STYLE found"
+          echo "=== Current PRODUCT_BUNDLE_IDENTIFIER entries ==="
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
+          
       - name: Set Development Team
         run: |
           # Add DEVELOPMENT_TEAM to all build configurations
