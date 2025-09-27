@@ -79,7 +79,7 @@ jobs:
       # Import cert to keychain
       - run: |
           security create-keychain -p "" build.keychain
-          security import signing.p12 -t agg -k ~/Library/Keychains/build.keychain -P "${{ secrets.IOS_CERTIFICATE_PASSWORD }}" -A
+          security import signing.p12 -t agg -k ~/Library/Keychains/build.keychain -P "${{ secrets.CERT_PASSWORD }}" -A
           security list-keychains -s build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
