@@ -83,6 +83,10 @@ jobs:
           security list-keychains -s build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
+          
+      - name: Set Development Team
+        run: |
+          sed -i '' 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};/g' ios/Runner.xcodeproj/project.pbxproj
 
       # Build signed IPA
       - run: |
