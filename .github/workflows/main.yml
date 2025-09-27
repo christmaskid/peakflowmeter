@@ -88,7 +88,9 @@ jobs:
         run: |
           # Add DEVELOPMENT_TEAM to iOS project if it doesn't exist
           if ! grep -q "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj; then
-            sed -i '' '/CODE_SIGN_STYLE = Automatic;/aDEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};' ios/Runner.xcodeproj/project.pbxproj
+            sed -i '' '/CODE_SIGN_STYLE = Automatic;/a\
+                DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};\
+' ios/Runner.xcodeproj/project.pbxproj
           else
             # Replace existing DEVELOPMENT_TEAM
             sed -i '' 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};/g' ios/Runner.xcodeproj/project.pbxproj
