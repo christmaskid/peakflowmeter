@@ -67,34 +67,41 @@ jobs:
     #     with:
     #       name: ios-app
     #       path: build/ios/iphoneos/
-      
-      # Signed build steps
-      # Decode cert & profile
-      - run: |
-          echo "${{ secrets.IOS_CERTIFICATE_P12 }}" | base64 --decode > signing.p12
-          echo "${{ secrets.IOS_PROVISIONING_PROFILE }}" | base64 --decode > profile.mobileprovision
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
-      # Import cert to keychain
-      - run: |
-          security create-keychain -p "" build.keychain
-          security import signing.p12 -t agg -k ~/Library/Keychains/build.keychain -P "${{ secrets.IOS_CERTIFICATE_PASSWORD }}" -A
-          security list-keychains -s build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-
-      # Set Development Team for code signing
-      - name: Set Development Team
+      # Signed build
+      - name: Create Folder for certificates and profiles
         run: |
-          sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};/' ios/Runner.xcodeproj/project.pbxproj
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p ~/Library/MobileDevice/Certificates/
 
+      # decode and save the p12 and provisioning files stored as secrets
+      - name: Get Certificate
+        id: certFileDecode
+        uses: timheuer/base64-to-file@v1.0.3
+        with:
+          fileName: 'certificate.p12'
+          encodedString: ${{ secrets.P12_BASE64 }}
+      - name: Copy Certificate
+        run: mv ${{ steps.certFileDecode.outputs.filePath }} ~/Library/MobileDevice/Certificates/certificate.p12
+       
+      - name: Get Profile
+        id: profFileDecode
+        uses: timheuer/base64-to-file@v1.0.3
+        with:
+          fileName: 'decoded.mobileprovision'
+          encodedString: ${{ secrets.MOBILEPROVISION_BASE64 }}
+      - name: Copy Profiles
+        run: mv ${{ steps.profFileDecode.outputs.filePath }} ~/Library/MobileDevice/Provisioning\ Profiles/decoded.mobileprovision
+      
       # Build signed IPA
-      - run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+      - run: |
+          xcode-project use-profiles
+          flutter build ipa --release --no-codesign
+          xcode-project build-ipa --workspace ios/Runner.xcworkspace --scheme Runner --config Release
       - uses: actions/upload-artifact@v4
         with:
-            name: ios-ipa
-            path: build/ios/ipa/*.ipa
+          name: ios-ipa
+          path: build/ios/ipa/*.ipa
 
   release:
     needs: [android, windows, linux, ios]
