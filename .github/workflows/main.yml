@@ -95,9 +95,7 @@ jobs:
       
       # Build signed IPA
       - run: |
-          xcode-project use-profiles
-          flutter build ipa --release --no-codesign
-          xcode-project build-ipa --workspace ios/Runner.xcworkspace --scheme Runner --config Release
+          flutter build ipa --release
       - uses: actions/upload-artifact@v4
         with:
           name: ios-ipa
