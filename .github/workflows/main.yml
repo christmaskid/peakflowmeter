@@ -93,6 +93,10 @@ jobs:
           echo "=== Current PRODUCT_BUNDLE_IDENTIFIER entries ==="
           grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
           
+      - name: Debug provisioning profile
+        run: |
+          security cms -D -i profile.mobileprovision | plutil -p -
+
       - name: Set Development Team
         run: |
           # Add DEVELOPMENT_TEAM to all build configurations
