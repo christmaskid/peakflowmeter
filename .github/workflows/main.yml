@@ -97,6 +97,14 @@ jobs:
         run: |
           security cms -D -i profile.mobileprovision | plutil -p -
 
+      - name: Regenerate iOS platform with correct bundle ID
+        run: |
+          flutter clean
+          rm -rf ios/
+          # Create with bundle ID that matches provisioning profile
+          flutter create --platform=ios --org=${{ secrets.APPLE_TEAM_ID }}.com.christmaskid .
+          flutter pub get
+
       - name: Set Development Team
         run: |
           # Add DEVELOPMENT_TEAM to all build configurations
