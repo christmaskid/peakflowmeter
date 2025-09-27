@@ -86,22 +86,15 @@ jobs:
           
       - name: Set Development Team
         run: |
-          # Add DEVELOPMENT_TEAM to iOS project if it doesn't exist
-          if ! grep -q "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj; then
-            sed -i '' '/CODE_SIGN_STYLE = Automatic;/a\
-                DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};\
-            ' ios/Runner.xcodeproj/project.pbxproj
-          else
-            # Replace existing DEVELOPMENT_TEAM
-            sed -i '' 's/DEVELOPMENT_TEAM = [A-Z0-9]*;/DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};/g' ios/Runner.xcodeproj/project.pbxproj
-          fi
+          # Use a more reliable approach with awk
+          awk '/CODE_SIGN_STYLE = Automatic;/ { print; print "\t\t\t\tDEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};"; next }1' ios/Runner.xcodeproj/project.pbxproj > temp.pbxproj && mv temp.pbxproj ios/Runner.xcodeproj/project.pbxproj
 
       # Build signed IPA
       - run: |
          flutter build ipa --release
       - uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
+          name: ios-app
           path: build/ios/ipa/*.ipa
 
   release:
