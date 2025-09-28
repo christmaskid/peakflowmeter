@@ -36,7 +36,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late AppDatabase database;
+  AppDatabase? database;  // 改为可空类型
   late Future<void> _dbInitFuture;
   final TextEditingController valueController = TextEditingController();
   final TextEditingController symptomsController = TextEditingController();
@@ -51,7 +51,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _initDatabase() async {
     try {
-      database = AppDatabase();
+      final db = AppDatabase();
+      // 测试数据库连接
+      await db.customSelect('SELECT 1').get();
+      database = db;
       print('Database initialized successfully');
     } catch (e) {
       print('Database initialization error: $e');
@@ -61,7 +64,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _addEntry(int value, String option, String symptoms, DateTime dateTime) async {
     try {
-      await database.into(database.entries).insert(
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      await db.into(db.entries).insert(
         EntriesCompanion.insert(
           date: '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
           time: '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
@@ -78,7 +86,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _updateEntry(int id, int value, String option, String symptoms, DateTime dateTime) async {
     try {
-      await (database.update(database.entries)..where((tbl) => tbl.id.equals(id))).write(
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      await (db.update(db.entries)..where((tbl) => tbl.id.equals(id))).write(
         EntriesCompanion(
           date: drift.Value('${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}'),
           time: drift.Value('${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}'),
@@ -95,7 +108,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _deleteEntry(int id) async {
     try {
-      await (database.delete(database.entries)..where((tbl) => tbl.id.equals(id))).go();
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      await (db.delete(db.entries)..where((tbl) => tbl.id.equals(id))).go();
       if (mounted) setState(() {});
     } catch (e) {
       print('Error deleting entry: $e');
@@ -104,7 +122,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<Entry>> _getEntries() async {
     try {
-      return await database.select(database.entries).get();
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return [];
+      }
+      return await db.select(db.entries).get();
     } catch (e) {
       print('Error getting entries: $e');
       return [];
@@ -362,9 +385,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _navigateToGraphPage(BuildContext context) {
+    final db = database;
+    if (db == null) {
+      print('Database not initialized, cannot navigate to graph page');
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => GraphPage(database: database),
+        builder: (context) => GraphPage(database: db),
       ),
     );
   }
@@ -373,7 +401,7 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     // 清理数据库连接
     try {
-      database.close();
+      database?.close();
     } catch (e) {
       print('Error closing database: $e');
     }
@@ -679,21 +707,30 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
   }
 
   Future<String?> _getSetting(String key) async {
-    final db = widget.database;
-    final query = db.select(db.settings)..where((tbl) => tbl.key.equals(key));
-    final result = await query.get();
-    if (result.isNotEmpty) return result.first.value;
-    return null;
+    try {
+      final db = widget.database;
+      final query = db.select(db.settings)..where((tbl) => tbl.key.equals(key));
+      final result = await query.get();
+      if (result.isNotEmpty) return result.first.value;
+      return null;
+    } catch (e) {
+      print('Error getting setting $key: $e');
+      return null;
+    }
   }
 
   Future<void> _setSetting(String key, String value) async {
-    final db = widget.database;
-    await db.into(db.settings).insertOnConflictUpdate(
-      SettingsCompanion(
-        key: drift.Value(key),
-        value: drift.Value(value),
-      ),
-    );
+    try {
+      final db = widget.database;
+      await db.into(db.settings).insertOnConflictUpdate(
+        SettingsCompanion(
+          key: drift.Value(key),
+          value: drift.Value(value),
+        ),
+      );
+    } catch (e) {
+      print('Error setting $key: $e');
+    }
   }
 
   Future<void> _loadThresholds() async {
@@ -741,7 +778,12 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
   }
 
   Future<List<Entry>> _getEntryList() async {
-    return await widget.database.select(widget.database.entries).get();
+    try {
+      return await widget.database.select(widget.database.entries).get();
+    } catch (e) {
+      print('Error getting entry list: $e');
+      return [];
+    }
   }
 
   @override
