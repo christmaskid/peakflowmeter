@@ -51,9 +51,9 @@ jobs:
         with:
           name: linux-app
           path: build/linux/x64/release/bundle/
-
   ios:
     runs-on: macos-latest
+    timeout-minutes: 30  # Add timeout to fail faster
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -61,15 +61,7 @@ jobs:
           flutter-version: '3.35.4'
       - run: flutter pub get
 
-      # Unsigned build
-    #   - run: flutter build ios --release --no-codesign
-    #   - uses: actions/upload-artifact@v4
-    #     with:
-    #       name: ios-app
-    #       path: build/ios/iphoneos/
-
-      # Signed build
-            # Decode cert & profile
+      # Decode cert & profile
       - run: |
           echo "${{ secrets.P12_BASE64 }}" | base64 --decode > signing.p12
           echo "${{ secrets.MOBILEPROVISION_BASE64 }}" | base64 --decode > profile.mobileprovision
@@ -83,54 +75,42 @@ jobs:
           security list-keychains -s build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
-          
-      - name: Debug project file
-        run: |
-          echo "=== Current DEVELOPMENT_TEAM entries ==="
-          grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
-          echo "=== Current CODE_SIGN_STYLE entries ==="
-          grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN_STYLE found"
-          echo "=== Current PRODUCT_BUNDLE_IDENTIFIER entries ==="
-          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
-          
-      - name: Debug provisioning profile
-        run: |
-          security cms -D -i profile.mobileprovision | plutil -p -
 
       - name: Regenerate iOS platform with correct bundle ID
         run: |
           flutter clean
           rm -rf ios/
-          # Create with bundle ID that matches provisioning profile
           flutter create --platform=ios --org=com.christmaskid .
           flutter pub get
       
       - name: Set Development Team and Manual Signing
         run: |
-          # Add DEVELOPMENT_TEAM and set manual code signing
           sed -i '' '/PRODUCT_BUNDLE_IDENTIFIER = com.christmaskid.peakflowmeter;$/a\
                 DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};\
                 CODE_SIGN_STYLE = Manual;\
                 PROVISIONING_PROFILE_SPECIFIER = ${{ secrets.PROVISIONING_PROFILE_NAME }};
           ' ios/Runner.xcodeproj/project.pbxproj
 
-      - name: Debug project file
+      # Speed up pod install
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install CocoaPods with timeout
         run: |
-          echo "=== Current DEVELOPMENT_TEAM entries ==="
-          grep -n "DEVELOPMENT_TEAM" ios/Runner.xcodeproj/project.pbxproj || echo "No DEVELOPMENT_TEAM found"
-          echo "=== Current CODE_SIGN_STYLE entries ==="
-          grep -n "CODE_SIGN_STYLE" ios/Runner.xcodeproj/project.pbxproj || echo "No CODE_SIGN_STYLE found"
-          echo "=== Current PRODUCT_BUNDLE_IDENTIFIER entries ==="
-          grep -n "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj || echo "No PRODUCT_BUNDLE_IDENTIFIER found"
-          
+          cd ios
+          timeout 300 pod install --verbose || (echo "Pod install failed or timed out" && exit 1)
+
       # Build signed IPA
-      - run: |
-         flutter build ipa --release
+      - run: flutter build ipa --release --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: ios-app
-          path: build/ios/ipa/*.ipa
-
+          path: build/ios/ipa/
   release:
     needs: [android, windows, linux, ios]
     runs-on: ubuntu-latest
