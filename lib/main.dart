@@ -50,42 +50,65 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _initDatabase() async {
-    database = AppDatabase();
+    try {
+      database = AppDatabase();
+      print('Database initialized successfully');
+    } catch (e) {
+      print('Database initialization error: $e');
+      rethrow;
+    }
   }
 
   Future<void> _addEntry(int value, String option, String symptoms, DateTime dateTime) async {
-    await database.into(database.entries).insert(
-      EntriesCompanion.insert(
-        date: '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
-        time: '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
-        value: value,
-        option: option,
-        symptoms: drift.Value(symptoms),
-      ),
-    );
-    setState(() {});
+    try {
+      await database.into(database.entries).insert(
+        EntriesCompanion.insert(
+          date: '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
+          time: '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
+          value: value,
+          option: option,
+          symptoms: drift.Value(symptoms),
+        ),
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      print('Error adding entry: $e');
+    }
   }
 
   Future<void> _updateEntry(int id, int value, String option, String symptoms, DateTime dateTime) async {
-    await (database.update(database.entries)..where((tbl) => tbl.id.equals(id))).write(
-      EntriesCompanion(
-        date: drift.Value('${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}'),
-        time: drift.Value('${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}'),
-        value: drift.Value(value),
-        option: drift.Value(option),
-        symptoms: drift.Value(symptoms),
-      ),
-    );
-    setState(() {});
+    try {
+      await (database.update(database.entries)..where((tbl) => tbl.id.equals(id))).write(
+        EntriesCompanion(
+          date: drift.Value('${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}'),
+          time: drift.Value('${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}'),
+          value: drift.Value(value),
+          option: drift.Value(option),
+          symptoms: drift.Value(symptoms),
+        ),
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      print('Error updating entry: $e');
+    }
   }
 
   Future<void> _deleteEntry(int id) async {
-    await (database.delete(database.entries)..where((tbl) => tbl.id.equals(id))).go();
-    setState(() {});
+    try {
+      await (database.delete(database.entries)..where((tbl) => tbl.id.equals(id))).go();
+      if (mounted) setState(() {});
+    } catch (e) {
+      print('Error deleting entry: $e');
+    }
   }
 
   Future<List<Entry>> _getEntries() async {
-    return await database.select(database.entries).get();
+    try {
+      return await database.select(database.entries).get();
+    } catch (e) {
+      print('Error getting entries: $e');
+      return [];
+    }
   }
   void _showAddEntryDialog(BuildContext context) {
     DateTime selectedDateTime = DateTime.now();
@@ -344,6 +367,17 @@ class _HomePageState extends State<HomePage> {
         builder: (context) => GraphPage(database: database),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // 清理数据库连接
+    try {
+      database.close();
+    } catch (e) {
+      print('Error closing database: $e');
+    }
+    super.dispose();
   }
 
   @override
