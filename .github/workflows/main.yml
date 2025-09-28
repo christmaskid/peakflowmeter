@@ -63,8 +63,8 @@ jobs:
 
       # Decode cert & profile
       - run: |
-          echo "${{ secrets.P12_BASE64 }}" | base64 --decode > signing.p12
-          echo "${{ secrets.MOBILEPROVISION_BASE64 }}" | base64 --decode > profile.mobileprovision
+          echo "${{ secrets.IOS_CERTIFICATE_P12_DEV_BASE64 }}" | base64 --decode > signing.p12
+          echo "${{ secrets.IOS_PROVISIONING_PROFILE_DEV_BASE64 }}" | base64 --decode > profile.mobileprovision
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
