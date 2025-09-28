@@ -1,9 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
+import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
 
 part 'drift_db.g.dart';
 
@@ -31,9 +31,18 @@ class AppDatabase extends _$AppDatabase {
 }
 
 LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'peakflow.db'));
-    return NativeDatabase(file);
-  });
+  if (kIsWeb) {
+    // Web uses IndexedDB
+    return LazyDatabase(() async => WebDatabase('peakflow'));
+  }
+
+  if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+    return LazyDatabase(() async {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File(p.join(dir.path, 'peakflow.db'));
+      return NativeDatabase(file);
+    });
+  }
+
+  throw UnsupportedError('Unsupported platform');
 }

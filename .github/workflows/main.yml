@@ -88,7 +88,7 @@ jobs:
           sed -i '' '/PRODUCT_BUNDLE_IDENTIFIER = com.christmaskid.peakflowmeter;$/a\
                 DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }};\
                 CODE_SIGN_STYLE = Manual;\
-                PROVISIONING_PROFILE_SPECIFIER = ${{ secrets.PROVISIONING_PROFILE_NAME }};
+                PROVISIONING_PROFILE_SPECIFIER = profile.mobileprovision;
           ' ios/Runner.xcodeproj/project.pbxproj
 
       # Speed up pod install
