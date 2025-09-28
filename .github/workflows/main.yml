@@ -99,11 +99,12 @@ jobs:
           key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-pods-
-
-      - name: Install CocoaPods with timeout
+      
+      - name: Install CocoaPods
         run: |
           cd ios
-          timeout 300 pod install --verbose || (echo "Pod install failed or timed out" && exit 1)
+          pod install --verbose
+        timeout-minutes: 5  # GitHub Actions timeout for this step
 
       # Build signed IPA
       - run: flutter build ipa --release --verbose
