@@ -17,6 +17,8 @@ dependencies:
   drift: ^2.28.1
   drift_flutter: 0.2.6 # Match drift version
   logging: ^1.2.0
+  sqlite3_flutter_libs: ^0.5.0 # On iOS, NativeDatabase is not supported.
+  # Drift requires sqlite3 + ffi for iOS because there is no default SQLite engine bundled in Flutter iOS apps.
 
 dev_dependencies:
   flutter_test:
