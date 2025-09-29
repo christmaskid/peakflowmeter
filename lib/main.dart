@@ -626,68 +626,47 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
   late TextEditingController _threshold2Controller;
 
   Future<void> _exportData(BuildContext context, List<Entry> entries) async {
-    // Generate CSV string
-    final csvBuffer = StringBuffer();
-    csvBuffer.writeln('date,time,value,option,symptoms');
-    for (final e in entries) {
-      csvBuffer.writeln('${e.date},${e.time},${e.value},${e.option},${e.symptoms ?? ''}');
-    }
-    // Save to Downloads directory
-    final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-    final filePath = '${directory.path}/peakflow_export_${DateTime.now().millisecondsSinceEpoch}.csv';
-    final file = File(filePath);
+    try {
+      // Generate CSV string
+      final csvBuffer = StringBuffer();
+      csvBuffer.writeln('date,time,value,option,symptoms');
+      for (final e in entries) {
+        csvBuffer.writeln('${e.date},${e.time},${e.value},${e.option},${e.symptoms ?? ''}');
+      }
+      
+      // Use Documents directory for iOS compatibility
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'peakflow_export_${DateTime.now().millisecondsSinceEpoch}.csv';
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
 
-    await file.writeAsString(csvBuffer.toString());
-    if (!mounted) return;
-    await showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(AppStrings.get('csvExported')),
-        content: Text('${AppStrings.get('csvSave')}:\n$filePath'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              OpenFile.open(filePath);
-              Navigator.pop(dialogContext);
-            },
-            child: Text(AppStrings.get('open')),
+      await file.writeAsString(csvBuffer.toString());
+      if (!mounted) return;
+      
+      await showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(AppStrings.get('csvExported')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${AppStrings.get('csvSave')}:'),
+              const SizedBox(height: 8),
+              Text(
+                fileName,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              if (Platform.isIOS)
+                Text(
+                  'File saved to app documents. Use "Files" app to access.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(AppStrings.get('close')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _exportChart(BuildContext context, GlobalKey chartKey) async {
-    // Render chart as image and save to file
-    final boundary = chartKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary != null) {
-      final image = await boundary.toImage(pixelRatio: 3.0);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData != null) {
-        final pngBytes = byteData.buffer.asUint8List();
-        final directory = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-        final filePath = '${directory.path}/peakflow_chart_${DateTime.now().millisecondsSinceEpoch}.png';
-        final file = File(filePath);
-
-        await file.writeAsBytes(pngBytes);
-        if (!mounted) return;
-        await showDialog(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(AppStrings.get('chartImageExported')),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.memory(pngBytes, height: 150),
-                const SizedBox(height: 12),
-                Text('${AppStrings.get('chartImageSave')}:\n$filePath'),
-              ],
-            ),
-            actions: [
+          actions: [
+            if (!Platform.isIOS)
               TextButton(
                 onPressed: () {
                   OpenFile.open(filePath);
@@ -695,14 +674,118 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                 },
                 child: Text(AppStrings.get('open')),
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: Text(AppStrings.get('close')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AppStrings.get('close')),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('Error exporting data: $e');
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Export Error'),
+          content: Text('Failed to export data: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _exportChart(BuildContext context, GlobalKey chartKey) async {
+    try {
+      // Render chart as image and save to file
+      final boundary = chartKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        throw Exception('Chart not ready for export');
+      }
+      
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        throw Exception('Failed to generate image data');
+      }
+      
+      final pngBytes = byteData.buffer.asUint8List();
+      
+      // Use Documents directory for iOS compatibility
+      final directory = await getApplicationDocumentsDirectory();
+      final fileName = 'peakflow_chart_${DateTime.now().millisecondsSinceEpoch}.png';
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+
+      await file.writeAsBytes(pngBytes);
+      if (!mounted) return;
+      
+      await showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(AppStrings.get('chartImageExported')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.memory(pngBytes, height: 150),
+              const SizedBox(height: 12),
+              Text(
+                '${AppStrings.get('chartImageSave')}:',
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 8),
+              Text(
+                fileName,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              if (Platform.isIOS)
+                Text(
+                  'Image saved to app documents. Use "Files" app to access and share.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
             ],
           ),
-        );
-      }
+          actions: [
+            if (!Platform.isIOS)
+              TextButton(
+                onPressed: () {
+                  OpenFile.open(filePath);
+                  Navigator.pop(dialogContext);
+                },
+                child: Text(AppStrings.get('open')),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AppStrings.get('close')),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('Error exporting chart: $e');
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Export Error'),
+          content: Text('Failed to export chart: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
