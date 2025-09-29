@@ -31,18 +31,9 @@ class AppDatabase extends _$AppDatabase {
 }
 
 LazyDatabase _openConnection() {
-  if (kIsWeb) {
-    // Web uses IndexedDB
-    return LazyDatabase(() async => WebDatabase('peakflow'));
-  }
-
-  if (Platform.isIOS || Platform.isAndroid || Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-    return LazyDatabase(() async {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File(p.join(dir.path, 'peakflow.db'));
-      return NativeDatabase(file);
-    });
-  }
-
-  throw UnsupportedError('Unsupported platform');
+  return LazyDatabase(() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dir.path, 'peakflow.db'));
+    return NativeDatabase(file);
+  });
 }
