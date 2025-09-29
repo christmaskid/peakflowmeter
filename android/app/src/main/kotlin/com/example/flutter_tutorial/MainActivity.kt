@@ -1,4 +1,4 @@
-package com.example.flutter_tutorial
+package com.christmaskid.peakflowmeter
 
 import io.flutter.embedding.android.FlutterActivity
 

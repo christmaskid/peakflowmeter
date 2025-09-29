@@ -17,8 +17,9 @@ dependencies:
   drift: ^2.28.1
   drift_flutter: 0.2.6 # Match drift version
   logging: ^1.2.0
-  sqlite3_flutter_libs: ^0.5.0 # On iOS, NativeDatabase is not supported.
+  # sqlite3_flutter_libs: ^0.5.0 # On iOS, NativeDatabase is not supported.
   # Drift requires sqlite3 + ffi for iOS because there is no default SQLite engine bundled in Flutter iOS apps.
+  flutter_launcher_icons: "^0.13.0"
 
 dev_dependencies:
   flutter_test:
@@ -29,3 +30,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+
+flutter_launcher_icons:
+  android: "launcher_icon" # Or true for default Android icon generation
+  ios: true
+  image_path: "assets/icon.png" # Path to your icon image
+  # Optional: specify different icons for platforms
+  # android_gravity: "center"
+  # adaptive_icon_background: "#ffffff" # For adaptive icons on Android
+  # adaptive_icon_foreground: "assets/icon/foreground.png"
