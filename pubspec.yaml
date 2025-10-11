@@ -1,7 +1,7 @@
 name: peakflowmeter
 description: "A peak flow meter app for tracking respiratory health."
 publish_to: "none"
-version: 0.1.6
+version: 0.1.7
 
 environment:
   sdk: ^3.9.0
@@ -17,8 +17,7 @@ dependencies:
   drift: ^2.28.1
   drift_flutter: 0.2.6 # Match drift version
   logging: ^1.2.0
-  # sqlite3_flutter_libs: ^0.5.0 # On iOS, NativeDatabase is not supported.
-  # Drift requires sqlite3 + ffi for iOS because there is no default SQLite engine bundled in Flutter iOS apps.
+  sqlite3_flutter_libs: ^0.5.0 # Required for iOS Unicode support
   flutter_launcher_icons: "^0.13.0"
 
 dev_dependencies:
@@ -33,10 +32,17 @@ flutter:
 
 
 flutter_launcher_icons:
-  android: "launcher_icon" # Or true for default Android icon generation
+  android: true
   ios: true
-  image_path: "assets/icon.png" # Path to your icon image
-  # Optional: specify different icons for platforms
-  # android_gravity: "center"
-  # adaptive_icon_background: "#ffffff" # For adaptive icons on Android
-  # adaptive_icon_foreground: "assets/icon/foreground.png"
+  image_path: "assets/icon1024.jpg"
+  min_sdk_android: 21
+  # Better Android adaptive icon support
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/icon1024.jpg"
+  web:
+    generate: true
+    image_path: "assets/icon1024.jpg"
+  windows:
+    generate: true
+    image_path: "assets/icon1024.jpg"
+    icon_size: 48

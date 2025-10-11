@@ -169,7 +169,15 @@ class _HomePageState extends State<HomePage> {
                     if (selectedOption == 'symptomatic')
                       TextField(
                         controller: symptomsController,
-                        decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.get('symptoms'),
+                          hintText: AppStrings.get('symptomsHint'), // Unicode hint text
+                        ),
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.done,
+                        maxLines: null,
+                        // Enable Unicode input
+                        inputFormatters: [],
                       ),
                     const SizedBox(height: 8),
                     Row(
@@ -296,7 +304,15 @@ class _HomePageState extends State<HomePage> {
                     if (selectedOption == 'symptomatic')
                       TextField(
                         controller: symptomsController,
-                        decoration: InputDecoration(labelText: AppStrings.get('symptoms')),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.get('symptoms'),
+                          hintText: '请输入症状描述...', // Unicode hint text
+                        ),
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.done,
+                        maxLines: null,
+                        // Enable Unicode input
+                        inputFormatters: [],
                       ),
                     const SizedBox(height: 8),
                     Row(
