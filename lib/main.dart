@@ -902,6 +902,18 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
         _threshold2 = parsedLower;
         _threshold2Controller.text = _threshold2.toString();
       }
+      
+      // Ensure upper threshold is higher than lower threshold
+      if (_threshold1 <= _threshold2) {
+        // Reset to default values if relationship is invalid
+        _threshold1 = AppConsts.upperThreshold;
+        _threshold2 = AppConsts.lowerThreshold;
+        _threshold1Controller.text = _threshold1.toString();
+        _threshold2Controller.text = _threshold2.toString();
+        // Save corrected values
+        _setSetting('upper_threshold', _threshold1.toString());
+        _setSetting('lower_threshold', _threshold2.toString());
+      }
     });
   }
 
@@ -922,6 +934,12 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
           _threshold1Controller.text = AppConsts.minYValue.toString();
           return;
         }
+        // Validate that upper threshold is higher than lower threshold
+        if (d <= _threshold2) {
+          _threshold1Controller.text = (_threshold2 + 1).toString();
+          _showThresholdValidationMessage();
+          return;
+        }
         setState(() => _threshold1 = d);
         _setSetting('upper_threshold', d.toString());
       }
@@ -938,11 +956,27 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
           _threshold2Controller.text = AppConsts.minYValue.toString();
           return;
         }
+        // Validate that lower threshold is lower than upper threshold
+        if (d >= _threshold1) {
+          _threshold2Controller.text = (_threshold1 - 1).toString();
+          _showThresholdValidationMessage();
+          return;
+        }
         setState(() => _threshold2 = d);
         _setSetting('lower_threshold', d.toString());
       }
     });
     _loadThresholds();
+  }
+
+  void _showThresholdValidationMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppStrings.get('thresholdValidationError')),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   @override
