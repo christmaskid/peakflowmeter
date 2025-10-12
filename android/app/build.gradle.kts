@@ -35,7 +35,7 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion  // 明確設定最低版本為21
         targetSdk = 36
-        versionCode = 2 //flutter.versionCode
+        versionCode = 3 //flutter.versionCode
         versionName = flutter.versionName
     }
 
