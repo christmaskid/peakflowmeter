@@ -1,10 +1,11 @@
 name: peakflowmeter
 description: "A peak flow meter app for tracking respiratory health."
 publish_to: "none"
-version: 1.0.0
+version: 0.1.8
 
 environment:
   sdk: ^3.9.0
+  flutter: ">=3.35.0"  # 明確指定Flutter版本
 
 dependencies:
   flutter:

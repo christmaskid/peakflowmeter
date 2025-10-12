@@ -1,17 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';  // 添加系統UI控制
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
-import 'strings.dart';
+import 'consts.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 // Add drift imports
 import 'package:drift/drift.dart' as drift;
-import 'drift_db.dart'; // <-- new file you'll create
+import 'drift_db.dart';
 
 void main() {
+  // 設置系統UI為邊緣到邊緣模式，相容Android 15
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 使用新的邊緣到邊緣API替代已棄用的方法
+  if (Platform.isAndroid) {
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+    );
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+    );
+  }
+  
   runApp(const MyApp());
 }
 
@@ -22,7 +42,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Peak Flow Meter',
-      theme: ThemeData(primarySwatch: Colors.blue),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        // 確保主題相容Android 15的邊緣到邊緣顯示
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+          ),
+        ),
+      ),
       home: const HomePage(),
     );
   }
@@ -573,7 +603,7 @@ class _HomePageState extends State<HomePage> {
                                 context: context,
                                 builder: (context) => AlertDialog(
                                   title: Text(AppStrings.get('deleteEntry')),
-                                  content: Text(AppStrings.get('deleteConfirm')),
+                                  content: Text(AppStrings.get('deleteEntryConfirm')),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.of(context).pop(false),
@@ -837,11 +867,17 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     final lower = await _getSetting('lower_threshold');
     setState(() {
       if (upper != null) {
-        _threshold1 = double.tryParse(upper) ?? _threshold1;
+        var parsedUpper = double.tryParse(upper) ?? _threshold1;
+        // Ensure loaded threshold is within bounds
+        parsedUpper = parsedUpper.clamp(AppConsts.minYValue, AppConsts.maxYValue);
+        _threshold1 = parsedUpper;
         _threshold1Controller.text = _threshold1.toString();
       }
       if (lower != null) {
-        _threshold2 = double.tryParse(lower) ?? _threshold2;
+        var parsedLower = double.tryParse(lower) ?? _threshold2;
+        // Ensure loaded threshold is within bounds
+        parsedLower = parsedLower.clamp(AppConsts.minYValue, AppConsts.maxYValue);
+        _threshold2 = parsedLower;
         _threshold2Controller.text = _threshold2.toString();
       }
     });
@@ -855,6 +891,15 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     _threshold1Controller.addListener(() {
       final d = double.tryParse(_threshold1Controller.text);
       if (d != null && d != _threshold1) {
+        // Validate threshold is within bounds
+        if (d > AppConsts.maxYValue) {
+          _threshold1Controller.text = AppConsts.maxYValue.toString();
+          return;
+        }
+        if (d < AppConsts.minYValue) {
+          _threshold1Controller.text = AppConsts.minYValue.toString();
+          return;
+        }
         setState(() => _threshold1 = d);
         _setSetting('upper_threshold', d.toString());
       }
@@ -862,6 +907,15 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     _threshold2Controller.addListener(() {
       final d = double.tryParse(_threshold2Controller.text);
       if (d != null && d != _threshold2) {
+        // Validate threshold is within bounds
+        if (d > AppConsts.maxYValue) {
+          _threshold2Controller.text = AppConsts.maxYValue.toString();
+          return;
+        }
+        if (d < AppConsts.minYValue) {
+          _threshold2Controller.text = AppConsts.minYValue.toString();
+          return;
+        }
         setState(() => _threshold2 = d);
         _setSetting('lower_threshold', d.toString());
       }
@@ -997,6 +1051,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                         child: TextField(
                           decoration: InputDecoration(
                             labelText: AppStrings.get('upperThreshold'),
+                            hintText: '${AppConsts.minYValue.toInt()}-${AppConsts.maxYValue.toInt()}',
                             border: const OutlineInputBorder(),
                           ),
                           keyboardType: TextInputType.number,
@@ -1008,6 +1063,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                         child: TextField(
                           decoration: InputDecoration(
                             labelText: AppStrings.get('lowerThreshold'),
+                            hintText: '${AppConsts.minYValue.toInt()}-${AppConsts.maxYValue.toInt()}',
                             border: const OutlineInputBorder(),
                           ),
                           keyboardType: TextInputType.number,
@@ -1106,8 +1162,8 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                         padding: const EdgeInsets.only(top: 20.0, right: 20.0, left: 8.0, bottom: 8.0),
                         child: LineChart(
                           LineChartData(
-                            minY: 0,
-                            maxY: 300,
+                            minY: AppConsts.minYValue,
+                            maxY: AppConsts.maxYValue,
                             lineBarsData: [
                               LineChartBarData(
                                 spots: spots,
@@ -1134,7 +1190,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                             rangeAnnotations: RangeAnnotations(
                               horizontalRangeAnnotations: [
                                 HorizontalRangeAnnotation(
-                                  y1: 0,
+                                  y1: AppConsts.minYValue,
                                   y2: lower,
                                   color: Colors.red, //.withOpacity(0.2),
                                 ),
@@ -1145,7 +1201,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                 ),
                                 HorizontalRangeAnnotation(
                                   y1: upper,
-                                  y2: 300,
+                                  y2: AppConsts.maxYValue,
                                   color: Colors.green, //.withOpacity(0.2),
                                 ),
                               ],
@@ -1157,8 +1213,19 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                               leftTitles: AxisTitles(
                                 sideTitles: SideTitles(
                                   showTitles: true,
-                                  reservedSize: 40,
+                                  reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
                                   interval: 50,
+                                  getTitlesWidget: (value, meta) {
+                                    // Use smaller font size for narrow screens
+                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
+                                    return Text(
+                                      value.toInt().toString(),
+                                      style: TextStyle(
+                                        fontSize: fontSize,
+                                        color: Colors.black87,
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                               bottomTitles: AxisTitles(
@@ -1177,11 +1244,13 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                     if (closest != null && (closest - value).abs() < 0.5) {
                                       label = dateLabels[closest] ?? '';
                                     }
+                                    // Use smaller font size for narrow screens
+                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 8.0),
                                       child: Text(
                                         label,
-                                        style: const TextStyle(fontSize: 12),
+                                        style: TextStyle(fontSize: fontSize),
                                       ),
                                     );
                                   },

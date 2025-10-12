@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.christmaskid.peakflowmeter"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -33,9 +33,9 @@ android {
         applicationId = "com.christmaskid.peakflowmeter"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
+        minSdk = flutter.minSdkVersion  // 明確設定最低版本為21
+        targetSdk = 36
+        versionCode = 2 //flutter.versionCode
         versionName = flutter.versionName
     }
 
