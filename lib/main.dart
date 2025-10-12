@@ -7,6 +7,7 @@ import 'consts.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Add drift imports
 import 'package:drift/drift.dart' as drift;
@@ -77,6 +78,29 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _dbInitFuture = _initDatabase();
+    _checkFirstTimeUser();
+  }
+
+  Future<void> _checkFirstTimeUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isFirstTime = prefs.getBool('isFirstTime') ?? true;
+      
+      if (isFirstTime) {
+        // Wait a bit for the UI to settle, then show guide
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _showGuide(context);
+              // Mark as not first time
+              prefs.setBool('isFirstTime', false);
+            }
+          });
+        });
+      }
+    } catch (e) {
+      print('Error checking first time user: $e');
+    }
   }
 
   Future<void> _initDatabase() async {
@@ -452,6 +476,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _showGuide(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => const GuidePageView(),
+      ),
+    );
+  }
+
   void _navigateToGraphPage(BuildContext context) {
     final db = database;
     if (db == null) {
@@ -482,6 +514,11 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Text(AppStrings.get('appTitle')),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => _showGuide(context),
+            tooltip: AppStrings.get('guide'),
+          ),
           IconButton(
             icon: const Icon(Icons.show_chart),
             onPressed: () => _navigateToGraphPage(context),
@@ -1290,6 +1327,252 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Guide Page View
+class GuidePageView extends StatefulWidget {
+  const GuidePageView({super.key});
+
+  @override
+  State<GuidePageView> createState() => _GuidePageViewState();
+}
+
+class _GuidePageViewState extends State<GuidePageView> {
+  PageController _pageController = PageController();
+  int _currentPage = 0;
+  final int _totalPages = 6; // Welcome + 5 steps
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _nextPage() {
+    if (_currentPage < _totalPages - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _previousPage() {
+    if (_currentPage > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _skipGuide() {
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(AppStrings.get('guide')),
+        actions: [
+          TextButton(
+            onPressed: _skipGuide,
+            child: Text(
+              AppStrings.get('skipGuide'),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Progress indicator
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: LinearProgressIndicator(
+              value: (_currentPage + 1) / _totalPages,
+              backgroundColor: Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).primaryColor,
+              ),
+            ),
+          ),
+          // Page content
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              children: [
+                _buildWelcomePage(),
+                _buildGuidePage(
+                  AppStrings.get('guideStep1Title'),
+                  AppStrings.get('guideStep1Desc'),
+                  Icons.add_circle_outline,
+                  Colors.blue,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep2Title'),
+                  AppStrings.get('guideStep2Desc'),
+                  Icons.medical_services_outlined,
+                  Colors.orange,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep3Title'),
+                  AppStrings.get('guideStep3Desc'),
+                  Icons.show_chart,
+                  Colors.green,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep4Title'),
+                  AppStrings.get('guideStep4Desc'),
+                  Icons.file_download_outlined,
+                  Colors.purple,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep5Title'),
+                  AppStrings.get('guideStep5Desc'),
+                  Icons.tips_and_updates_outlined,
+                  Colors.teal,
+                ),
+              ],
+            ),
+          ),
+          // Navigation buttons
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Previous button
+                _currentPage > 0
+                    ? ElevatedButton(
+                        onPressed: _previousPage,
+                        child: Text(AppStrings.get('previous')),
+                      )
+                    : const SizedBox.shrink(),
+                // Page indicator
+                Text(
+                  '${_currentPage + 1} / $_totalPages',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                // Next/Finish button
+                ElevatedButton(
+                  onPressed: _nextPage,
+                  child: Text(
+                    _currentPage == _totalPages - 1
+                        ? AppStrings.get('getStarted')
+                        : AppStrings.get('next'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWelcomePage() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.air,
+            size: 100,
+            color: Theme.of(context).primaryColor,
+          ),
+          const SizedBox(height: 32),
+          Text(
+            AppStrings.get('welcomeTitle'),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            AppStrings.get('welcomeSubtitle'),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.grey[600],
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 48),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: Text(
+              AppStrings.get('welcomeDescription'),
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuidePage(String title, String description, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 64,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Text(
+              description,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 1.5,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }
