@@ -99,6 +99,7 @@ class _HomePageState extends State<HomePage> {
         print('Database not initialized');
         return;
       }
+      
       await db.into(db.entries).insert(
         EntriesCompanion.insert(
           date: '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}',
@@ -164,7 +165,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
   void _showAddEntryDialog(BuildContext context) {
-    DateTime selectedDateTime = DateTime.now();
+    // Clear controllers to ensure clean state for new entry
+    valueController.clear();
+    symptomsController.clear();
+    DateTime? selectedDateTime; // Start with null instead of DateTime.now()
     showDialog(
       context: context,
       builder: (context) {
@@ -206,20 +210,24 @@ class _HomePageState extends State<HomePage> {
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.done,
                         maxLines: null,
-                        // Enable Unicode input
                         inputFormatters: [],
+                        // textCapitalization: TextCapitalization.none,
+                        // enableSuggestions: true,
+                        // autocorrect: false,
                       ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
-                          child: Text('${AppStrings.get('date')}: ${selectedDateTime.year}-${selectedDateTime.month.toString().padLeft(2, '0')}-${selectedDateTime.day.toString().padLeft(2, '0')}'),
+                          child: Text(selectedDateTime != null 
+                            ? '${AppStrings.get('date')}: ${selectedDateTime!.year}-${selectedDateTime!.month.toString().padLeft(2, '0')}-${selectedDateTime!.day.toString().padLeft(2, '0')}'
+                            : '${AppStrings.get('date')}: ${AppStrings.get('notSelected')}'),
                         ),
                         TextButton(
                           onPressed: () async {
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: selectedDateTime,
+                              initialDate: selectedDateTime ?? DateTime.now(),
                               firstDate: DateTime(2000),
                               lastDate: DateTime(2100),
                             );
@@ -229,8 +237,8 @@ class _HomePageState extends State<HomePage> {
                                   picked.year,
                                   picked.month,
                                   picked.day,
-                                  selectedDateTime.hour,
-                                  selectedDateTime.minute,
+                                  selectedDateTime?.hour ?? DateTime.now().hour,
+                                  selectedDateTime?.minute ?? DateTime.now().minute,
                                 );
                               });
                             }
@@ -242,20 +250,24 @@ class _HomePageState extends State<HomePage> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text('${AppStrings.get('time')}: ${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}'),
+                          child: Text(selectedDateTime != null 
+                            ? '${AppStrings.get('time')}: ${selectedDateTime!.hour.toString().padLeft(2, '0')}:${selectedDateTime!.minute.toString().padLeft(2, '0')}'
+                            : '${AppStrings.get('time')}: ${AppStrings.get('notSelected')}'),
                         ),
                         TextButton(
                           onPressed: () async {
                             final picked = await showTimePicker(
                               context: context,
-                              initialTime: TimeOfDay.fromDateTime(selectedDateTime),
+                              initialTime: selectedDateTime != null 
+                                ? TimeOfDay.fromDateTime(selectedDateTime!)
+                                : TimeOfDay.now(),
                             );
                             if (picked != null) {
                               setStateDialog(() {
                                 selectedDateTime = DateTime(
-                                  selectedDateTime.year,
-                                  selectedDateTime.month,
-                                  selectedDateTime.day,
+                                  selectedDateTime?.year ?? DateTime.now().year,
+                                  selectedDateTime?.month ?? DateTime.now().month,
+                                  selectedDateTime?.day ?? DateTime.now().day,
                                   picked.hour,
                                   picked.minute,
                                 );
@@ -272,6 +284,9 @@ class _HomePageState extends State<HomePage> {
               actions: [
                 TextButton(
                   onPressed: () {
+                    // Clear controllers when canceling to avoid carrying over values
+                    valueController.clear();
+                    symptomsController.clear();
                     Navigator.of(context).pop();
                   },
                   child: Text(AppStrings.get('cancel')),
@@ -280,7 +295,9 @@ class _HomePageState extends State<HomePage> {
                   onPressed: () {
                     final value = int.tryParse(valueController.text) ?? 0;
                     final symptoms = selectedOption == 'symptomatic' ? symptomsController.text : '';
-                    _addEntry(value, selectedOption, symptoms, selectedDateTime);
+                    // Use current time if no date/time was selected
+                    final finalDateTime = selectedDateTime ?? DateTime.now();
+                    _addEntry(value, selectedOption, symptoms, finalDateTime);
                     valueController.clear();
                     symptomsController.clear();
                     Navigator.of(context).pop();
@@ -336,13 +353,15 @@ class _HomePageState extends State<HomePage> {
                         controller: symptomsController,
                         decoration: InputDecoration(
                           labelText: AppStrings.get('symptoms'),
-                          hintText: '请输入症状描述...', // Unicode hint text
+                          hintText: AppStrings.get('symptomsHint'), // Use consistent localized hint
                         ),
                         keyboardType: TextInputType.multiline,
                         textInputAction: TextInputAction.done,
                         maxLines: null,
-                        // Enable Unicode input
                         inputFormatters: [],
+                        // textCapitalization: TextCapitalization.none,
+                        // enableSuggestions: true,
+                        // autocorrect: false,
                       ),
                     const SizedBox(height: 8),
                     Row(
@@ -407,6 +426,9 @@ class _HomePageState extends State<HomePage> {
               actions: [
                 TextButton(
                   onPressed: () {
+                    // Clear controllers when canceling to avoid carrying over values
+                    valueController.clear();
+                    symptomsController.clear();
                     Navigator.of(context).pop();
                   },
                   child: Text(AppStrings.get('cancel')),

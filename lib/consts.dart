@@ -63,6 +63,7 @@ class AppStrings {
       'language': 'Language',
       'english': 'English',
       'chinese': '繁體中文',
+      'notSelected': 'Not selected',
     },
     'zh': {
       'appTitle': '尖端吐氣流量值紀錄',
@@ -109,6 +110,7 @@ class AppStrings {
       'language': '語言',
       'english': 'English',
       'chinese': '繁體中文',
+      'notSelected': '未選擇',
     },
   };
 
