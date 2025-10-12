@@ -1007,6 +1007,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
         title: Text(AppStrings.get('graphTitle')),
         actions: [
           PopupMenuButton<String>(
+            icon: const Icon(Icons.file_download_outlined),
             onSelected: (value) async {
               if (value == 'export_data') {
                 // Export currently displayed data

@@ -84,7 +84,7 @@ class AppStrings {
       'skipGuide': 'Skip Guide',
     },
     'zh': {
-      'appTitle': '尖端吐氣流量值紀錄',
+      'appTitle': '尖端吐氣流量值',
       'graphTitle': '圖表',
       'addEntry': '新增紀錄',
       'editEntry': '編輯記錄',
