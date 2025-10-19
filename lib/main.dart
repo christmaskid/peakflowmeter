@@ -748,7 +748,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                 )
               else if (Platform.isIOS)
                 Text(
-                  'File saved to app documents. Use "Files" app to access.',
+                  AppStrings.get('fileSavedToDocuments'),
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),

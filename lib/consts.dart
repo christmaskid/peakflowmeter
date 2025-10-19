@@ -73,6 +73,7 @@ class AppStrings {
       'noAppToOpenImage': 'No app found to open image files',
       'needImageApp': 'You may need to install a photo or gallery app',
       'pathCopied': 'Path copied to clipboard',
+      'fileSavedToDocuments': 'File saved to app documents. Use "Files" app to access.',
     },
     'zh': {
       'appTitle': '尖端吐氣流量值紀錄',
@@ -128,6 +129,7 @@ class AppStrings {
       'noAppToOpenImage': '找不到可開啟圖片檔案的應用程式',
       'needImageApp': '您可能需要安裝相片或相簿應用程式',
       'pathCopied': '路徑已複製到剪貼板',
+      'fileSavedToDocuments': '檔案已儲存至應用程式文件。請使用「檔案」應用程式存取。',
     },
   };
 
