@@ -33,9 +33,9 @@ android {
         applicationId = "com.christmaskid.peakflowmeter"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion  // 明確設定最低版本為21
+        minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 3 //flutter.versionCode
+        versionCode = 4 //flutter.versionCode
         versionName = flutter.versionName
     }
 

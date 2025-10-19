@@ -15,7 +15,8 @@ class AppConsts{
 // All user-facing strings for easy translation
 
 class AppStrings {
-  static String currentLanguage = 'en';
+  static String currentLanguage = 'zh'; // 'en';
+  // set default to Mandarin Chinese in 0.1.9
 
   static const Map<String, Map<String, String>> _localizedValues = {
     'en': {
@@ -60,6 +61,8 @@ class AppStrings {
       'upperThreshold': 'Upper Threshold',
       'lowerThreshold': 'Lower Threshold',
       'notEnoughData': 'Not enough data to display a graph. Add at least 2 entries.',
+      'thresholdValidationError': 'Upper threshold must be higher than lower threshold',
+      'thresholdCorrected': 'Threshold values have been automatically corrected',
       'language': 'Language',
       'english': 'English',
       'chinese': '繁體中文',
@@ -125,6 +128,8 @@ class AppStrings {
       'upperThreshold': '高閾值',
       'lowerThreshold': '低閾值',
       'notEnoughData': '數據不足，至少需要兩筆資料。',
+      'thresholdValidationError': '高閾值必須高於低閾值',
+      'thresholdCorrected': '閾值已自動校正',
       'language': '語言',
       'english': 'English',
       'chinese': '繁體中文',
