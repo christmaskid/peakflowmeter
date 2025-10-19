@@ -813,23 +813,23 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                 style: const TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 12),
-              if (Platform.isIOS)
-                Text(
-                  'Image saved to app documents. Use "Files" app to access and share.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
-                ),
+              // if (Platform.isIOS)
+              //   Text(
+              //     'Image saved to app documents. Use "Files" app to access and share.',
+              //     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              //     textAlign: TextAlign.center,
+              //   ),
             ],
           ),
           actions: [
-            if (!Platform.isIOS)
-              TextButton(
-                onPressed: () {
-                  OpenFile.open(filePath);
-                  Navigator.pop(dialogContext);
-                },
-                child: Text(AppStrings.get('open')),
-              ),
+            // if (!Platform.isIOS)
+            TextButton(
+              onPressed: () {
+                OpenFile.open(filePath);
+                Navigator.pop(dialogContext);
+              },
+              child: Text(AppStrings.get('open')),
+            ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(AppStrings.get('close')),
