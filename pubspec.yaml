@@ -1,7 +1,7 @@
 name: peakflowmeter
 description: "A peak flow meter app for tracking respiratory health."
 publish_to: "none"
-version: 0.1.8
+version: 0.1.9
 
 environment:
   sdk: ^3.9.0
