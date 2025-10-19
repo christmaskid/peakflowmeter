@@ -5,16 +5,14 @@ This is a peak flow meter app build with Flutter.
 - Development aided by Copilot
 
 ## Download My App
-<p>
-  <a href="https://github.com/christmaskid/peakflowmeter/releases/download/v1.0.0/app-release.apk">
-    Download Android (.apk)
-  </a>
-</p>
-<p>
-  <a href="https://github.com/yourname/yourrepo/releases/download/v1.0.0/windows-app.zip">
-    Download Windows (.zip)
-  </a>
-</p>
+**Help us by becoming an internal tester!**
+- Android: Google Play store
+Testing link: 
+https://play.google.com/apps/testing/com.christmaskid.peakflowmeter
+
+- iOS: AppStore
+Preview available at https://apps.apple.com/app/peakflowmeter/id6753135338
+
 
 ## Supported Platforms
 - [x] Android
