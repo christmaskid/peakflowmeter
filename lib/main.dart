@@ -739,8 +739,23 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
         csvBuffer.writeln('${e.date},${e.time},${e.value},${e.option},${e.symptoms ?? ''}');
       }
       
-      // Use Documents directory for iOS compatibility
-      final directory = await getApplicationDocumentsDirectory();
+      // Use appropriate directory based on platform
+      Directory directory;
+      if (Platform.isAndroid) {
+        // On Android, try to use Downloads directory if available, fallback to Documents
+        try {
+          directory = Directory('/storage/emulated/0/Download');
+          if (!await directory.exists()) {
+            directory = await getApplicationDocumentsDirectory();
+          }
+        } catch (e) {
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        // iOS - use Documents directory
+        directory = await getApplicationDocumentsDirectory();
+      }
+      
       final fileName = 'peakflow_export_${DateTime.now().millisecondsSinceEpoch}.csv';
       final filePath = '${directory.path}/$fileName';
       final file = File(filePath);
@@ -762,19 +777,126 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
-              // if (Platform.isIOS)
-              //   Text(
-              //     'File saved to app documents. Use "Files" app to access.',
-              //     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              //     textAlign: TextAlign.center,
-              //   ),
+              if (Platform.isAndroid)
+                Text(
+                  '${AppStrings.get('csvSave')}: ${directory.path.contains('Download') ? 'Downloads' : 'app documents'}. ${AppStrings.get('needSpreadsheetApp')}.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                )
+              else if (Platform.isIOS)
+                Text(
+                  'File saved to app documents. Use "Files" app to access.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
             ],
           ),
           actions: [
-            // if (!Platform.isIOS)
             TextButton(
-              onPressed: () {
-                OpenFile.open(filePath);
+              onPressed: () async {
+                try {
+                  final result = await OpenFile.open(filePath, type: 'text/csv');
+                  if (result.type == ResultType.noAppToOpen) {
+                    // Try opening as plain text if no CSV app is available
+                    // print('No CSV app found, trying as plain text...');
+                    // final textResult = await OpenFile.open(filePath, type: 'text/plain');
+                    
+                    // if (textResult.type == ResultType.noAppToOpen) {
+                      // Still no app available - show comprehensive error dialog
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(AppStrings.get('noAppToOpenCSV')),
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                        
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(AppStrings.get('noAppToOpenCSV')),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(AppStrings.get('needSpreadsheetApp')),
+                                const SizedBox(height: 16),
+                                Text('${AppStrings.get('copyPath')}:'),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          filePath,
+                                          style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.copy, size: 16),
+                                        onPressed: () {
+                                          Clipboard.setData(ClipboardData(text: filePath));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text(AppStrings.get('pathCopied'))),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: Text(AppStrings.get('close')),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    // } else if (textResult.type != ResultType.done) {
+                    //   // Text opening failed for other reasons
+                    //   if (mounted) {
+                    //     ScaffoldMessenger.of(context).showSnackBar(
+                    //       SnackBar(
+                    //         content: Text('${AppStrings.get('failedToOpen')}: ${textResult.message}'),
+                    //         duration: const Duration(seconds: 3),
+                    //       ),
+                    //     );
+                    //   }
+                    // }
+                    // // If textResult.type == ResultType.done, file opened successfully as text
+                    
+                  } else if (result.type != ResultType.done) {
+                    // CSV opening failed for other reasons
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${AppStrings.get('failedToOpen')}: ${result.message}'),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }
+                  // If result.type == ResultType.done, file opened successfully as CSV
+                  
+                } catch (e) {
+                  print('Error opening file: $e');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('File saved to: ${directory.path}'),
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                }
                 Navigator.pop(dialogContext);
               },
               child: Text(AppStrings.get('open')),
@@ -822,8 +944,23 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
       
       final pngBytes = byteData.buffer.asUint8List();
       
-      // Use Documents directory for iOS compatibility
-      final directory = await getApplicationDocumentsDirectory();
+      // Use appropriate directory based on platform
+      Directory directory;
+      if (Platform.isAndroid) {
+        // On Android, try to use Downloads directory if available, fallback to Documents
+        try {
+          directory = Directory('/storage/emulated/0/Download');
+          if (!await directory.exists()) {
+            directory = await getApplicationDocumentsDirectory();
+          }
+        } catch (e) {
+          directory = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        // iOS - use Documents directory
+        directory = await getApplicationDocumentsDirectory();
+      }
+      
       final fileName = 'peakflow_chart_${DateTime.now().millisecondsSinceEpoch}.png';
       final filePath = '${directory.path}/$fileName';
       final file = File(filePath);
@@ -850,20 +987,79 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                 style: const TextStyle(fontSize: 12),
               ),
               const SizedBox(height: 12),
-              // if (Platform.isIOS)
-              //   Text(
-              //     'Image saved to app documents. Use "Files" app to access and share.',
-              //     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              //     textAlign: TextAlign.center,
-              //   ),
             ],
           ),
           actions: [
             // if (!Platform.isIOS)
             TextButton(
-              onPressed: () {
-                OpenFile.open(filePath);
+              onPressed: () async {
+                final result = await OpenFile.open(filePath);
                 Navigator.pop(dialogContext);
+                
+                if (result.type == ResultType.noAppToOpen) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(AppStrings.get('noAppToOpenImage')),
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                  
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text(AppStrings.get('noAppToOpenImage')),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(AppStrings.get('needImageApp')),
+                          const SizedBox(height: 16),
+                          Text('${AppStrings.get('copyPath')}:'),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    filePath,
+                                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.copy, size: 16),
+                                  onPressed: () {
+                                    Clipboard.setData(ClipboardData(text: filePath));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(AppStrings.get('pathCopied'))),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(AppStrings.get('close')),
+                        ),
+                      ],
+                    ),
+                  );
+                } else if (result.type != ResultType.done) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('${AppStrings.get('failedToOpen')}: ${result.message}'),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
               },
               child: Text(AppStrings.get('open')),
             ),
