@@ -67,6 +67,12 @@ class AppStrings {
       'english': 'English',
       'chinese': '繁體中文',
       'notSelected': 'Not selected',
+      'noAppToOpenCSV': 'No app found to open CSV files',
+      'needSpreadsheetApp': 'You may need to install a spreadsheet app (Excel, Google Sheets)',
+      'copyPath': 'Copy Path',
+      'noAppToOpenImage': 'No app found to open image files',
+      'needImageApp': 'You may need to install a photo or gallery app',
+      'pathCopied': 'Path copied to clipboard',
     },
     'zh': {
       'appTitle': '尖端吐氣流量值紀錄',
@@ -116,6 +122,12 @@ class AppStrings {
       'english': 'English',
       'chinese': '繁體中文',
       'notSelected': '未選擇',
+      'noAppToOpenCSV': '找不到可開啟CSV檔案的應用程式',
+      'needSpreadsheetApp': '您可能需要安裝試算表應用程式（Excel、Google試算表）',
+      'copyPath': '複製路徑',
+      'noAppToOpenImage': '找不到可開啟圖片檔案的應用程式',
+      'needImageApp': '您可能需要安裝相片或相簿應用程式',
+      'pathCopied': '路徑已複製到剪貼板',
     },
   };
 
