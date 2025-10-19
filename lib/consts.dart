@@ -15,7 +15,7 @@ class AppConsts{
 // All user-facing strings for easy translation
 
 class AppStrings {
-  static String currentLanguage = 'zh'; // 'en';
+  static String currentLanguage = 'en';
   // set default to Mandarin Chinese in 0.1.9
 
   static const Map<String, Map<String, String>> _localizedValues = {
