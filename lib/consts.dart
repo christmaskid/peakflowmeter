@@ -13,9 +13,9 @@ class AppConsts{
   static const double yInterval = 100;
 
   static const Map<String, Color> optionColors = {
-    'morning': Colors.black, //red,
-    'night': Colors.black, //green,
-    'symptomatic': Colors.black //orange
+    'morning': Colors.red,
+    'night': Colors.green,
+    'symptomatic': Colors.orange
   };
   static Color getOptionColor(String option) {
     return optionColors[option] ?? Colors.black;

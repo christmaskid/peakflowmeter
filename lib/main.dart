@@ -1482,41 +1482,26 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                     } else {
                       yearLabels[x] = ''; // clear duplicate year label
                     }
-
-                    // debug print removed
                   }
                   // Determine whether to show day labels (when data span is within ~1 month)
                   final bool _showDays = _maxX < 31.0;
-
-                  // Decide which month labels to render to avoid overlap.
-                  // Compute positions that have month labels (non-empty) in ascending order.
-                  final monthPositions = monthLabels.entries.where((e) => e.value.isNotEmpty).toList()
-                    ..sort((a, b) => a.key.compareTo(b.key));
-                  // Rough maximum labels that fit: one label per ~60 logical pixels of screen width
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final int maxLabels = (screenWidth / 60).floor().clamp(1, 1000);
-                  int step = 1;
-                  if (monthPositions.length > maxLabels) {
-                    step = (monthPositions.length / maxLabels).ceil();
-                  }
-                  final visibleMonthPositions = <double>{};
-                  for (var i = 0; i < monthPositions.length; i++) {
-                    if (i % step == 0) visibleMonthPositions.add(monthPositions[i].key);
-                  }
                   final bool _showMonths = _maxX < 365.0;
                   final bool _showYears = true;
-                  Color getDotColor(String type) {
-                    switch (type) {
-                      case 'morning':
-                        return Colors.red;
-                      case 'night':
-                        return Colors.green;
-                      case 'symptomatic':
-                        return Colors.orange;
-                      default:
-                        return Colors.black;
+
+                  if (!_showDays && _showMonths) {
+                    // prevent label overlap by requiring gap
+                    double _lastX = 0.0;
+                    var xs = monthLabels.keys.toList();
+                    xs.sort();
+                    for (var x in xs) {
+                      if (_lastX > 0.0 && x - _lastX < 15.0) {
+                        monthLabels[x] = ' ';
+                      } else if (monthLabels[x]!.isNotEmpty) {
+                        _lastX = x;
+                      }
                     }
                   }
+
                   double upper = _threshold1 > _threshold2 ? _threshold1 : _threshold2;
                   double lower = _threshold1 > _threshold2 ? _threshold2 : _threshold1;
                   return SizedBox(
@@ -1547,7 +1532,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                       final type = (index < types.length) ? types[index] : '';
                                       return FlDotCirclePainter(
                                         radius: 4,
-                                        color: getDotColor(type),
+                                        color: AppConsts.getOptionColor(type),
                                         strokeWidth: 1,
                                         strokeColor: Colors.white,
                                       );
@@ -1617,10 +1602,6 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                         dayLabel = dateLabels[closest] ?? '';
                                         monthLabel = (monthLabels[closest] ?? '');
                                         yearLabel = (yearLabels[closest] ?? '');
-                                        // hide month labels that were filtered out to avoid overlap
-                                        if (!visibleMonthPositions.contains(closest)) {
-                                          monthLabel = '';
-                                        }
                                       }
                                       // Use smaller font size for narrow screens
                                       double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
