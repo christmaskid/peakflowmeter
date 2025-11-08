@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 // Add drift imports
 import 'package:drift/drift.dart' as drift;
 import 'drift_db.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:math';
 
 void main() {
   // 設置系統UI為邊緣到邊緣模式，相容Android 15
@@ -186,6 +188,64 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print('Error getting entries: $e');
       return [];
+    }
+  }
+
+  // Debug helper: insert 50 synthetic entries for testing the graph
+  Future<void> _insertTestData() async {
+    try {
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      final rnd = Random();
+      final now = DateTime.now();
+      var numEntries = rnd.nextInt(200); // 100; //50;
+      // Spread entries roughly every 2 days backward
+      for (int i = 0; i < numEntries; i++) {
+        final dt = now.subtract(Duration(days: i * 2, hours: rnd.nextInt(24), minutes: rnd.nextInt(60)));
+        final val = 100 + rnd.nextInt(700); // realistic range
+        final opt = options[rnd.nextInt(options.length)];
+        await _addEntry(val, opt, '', dt);
+      }
+      if (mounted) setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inserted 50 test entries')),
+      );
+    } catch (e) {
+      print('Error inserting test data: $e');
+    }
+  }
+
+  // Debug helper: delete all entries (debug mode only) with confirmation
+  Future<void> _deleteAllEntries() async {
+    try {
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete all entries'),
+          content: const Text('This will remove all entries from the database. Are you sure?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(AppStrings.get('cancel'))),
+            TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text(AppStrings.get('delete'))),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      await (db.delete(db.entries)).go();
+      if (mounted) setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All entries deleted')),
+      );
+    } catch (e) {
+      print('Error deleting all entries: $e');
     }
   }
   void _showAddEntryDialog(BuildContext context) {
@@ -514,11 +574,26 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Text(AppStrings.get('appTitle')),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () => _showGuide(context),
-            tooltip: AppStrings.get('guide'),
-          ),
+          
+          // debug buttons
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              onPressed: () async {
+                await _insertTestData();
+              },
+              tooltip: 'Insert test data',
+            ),
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.delete_forever),
+              onPressed: () async {
+                await _deleteAllEntries();
+              },
+              tooltip: 'Delete all entries (debug)',
+            ),
+          // end of debug buttons
+
           IconButton(
             icon: const Icon(Icons.show_chart),
             onPressed: () => _navigateToGraphPage(context),
@@ -588,20 +663,6 @@ class _HomePageState extends State<HomePage> {
                   final symptoms = (entry.symptoms != null && entry.symptoms.toString().trim().isNotEmpty)
                       ? entry.symptoms.toString().trim()
                       : null;
-                  Color optionColor;
-                  switch (option) {
-                    case 'morning':
-                      optionColor = Colors.red;
-                      break;
-                    case 'night':
-                      optionColor = Colors.green;
-                      break;
-                    case 'symptomatic':
-                      optionColor = Colors.orange;
-                      break;
-                    default:
-                      optionColor = Colors.black;
-                  }
                   return ListTile(
                     title: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -615,7 +676,11 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(width: 8),
                           Text(
                             AppStrings.get(option),
-                            style: TextStyle(fontSize: 16, color: optionColor, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 16, 
+                              color: AppConsts.getOptionColor(option), 
+                              fontWeight: FontWeight.w600
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -1367,9 +1432,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
             ),
 
             // Chart
-            SizedBox(
-              height: 400,
-              child: FutureBuilder<List<Entry>>(
+            FutureBuilder<List<Entry>>(
                 future: _getEntryList(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
@@ -1408,402 +1471,216 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   final spots = <FlSpot>[];
                   final types = <String>[];
                   final dateLabels = <double, String>{};
-                  // Use time since first entry as x value (in days, with fraction for time)
-                  if (sortedEntries.isEmpty) {
-                    return const SizedBox();
-                  }
+                  // Keep month labels for the bottom axis (show month when it changes)
+                  final monthLabels = <double, String>{};
+                  final yearLabels = <double, String>{};
+                  final monthNames = AppStrings.getMonthNames();
                   final firstDateTime = DateTime.tryParse('${sortedEntries.last.date} ${sortedEntries.last.time}') ?? DateTime(1900);
+                  
+                  double _maxX = 0.0;
+                  String lastDayLabel = '';
+                  String lastMonthLabel = '';
+                  String lastYearLabel = '';
+
                   for (var i = 0; i < sortedEntries.length; i++) {
                     final entry = sortedEntries[i];
                     final dateStr = entry.date;
                     final timeStr = entry.time;
                     final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
                     final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
+                    if (x > _maxX) _maxX = x;
                     spots.add(FlSpot(x, (entry.value).toDouble()));
                     types.add((entry.option as String?)?.toLowerCase() ?? '');
-                    // Only keep the day part for the label
-                    String dayLabel = '';
-                    if (dateStr.length >= 10) {
-                      // Expecting format YYYY-MM-DD
-                      dayLabel = dateStr.substring(8, 10);
+
+                    // determine month part and day part
+                    final monthPart = int.tryParse(dateStr.substring(5, 7)) ?? dt.month;
+                    final dayPart = int.tryParse(dateStr.substring(8, 10)) ?? dt.day;
+                    final yearPart = int.tryParse(dateStr.substring(0, 4)) ?? dt.year;
+
+                    dateLabels[x] = dayPart.toString();
+                    if (dateLabels[x] != lastDayLabel) {
+                      lastDayLabel = dateLabels[x]!;
+                    } else {
+                      dateLabels[x] = ''; // clear duplicate day label
                     }
-                    dateLabels[x] = dayLabel;
-                  }
-                  Color getDotColor(String type) {
-                    switch (type) {
-                      case 'morning':
-                        return Colors.red;
-                      case 'night':
-                        return Colors.green;
-                      case 'symptomatic':
-                        return Colors.orange;
-                      default:
-                        return Colors.black;
+                    monthLabels[x] = monthNames[(monthPart - 1).clamp(0, 11)];
+                    if (monthLabels[x] != lastMonthLabel) {
+                      lastMonthLabel = monthLabels[x]!;
+                    } else {
+                      monthLabels[x] = ''; // clear duplicate month label
+                    }
+                    yearLabels[x] = yearPart.toString();
+                    if (yearLabels[x] != lastYearLabel) {
+                      lastYearLabel = yearLabels[x]!;
+                    } else {
+                      yearLabels[x] = ''; // clear duplicate year label
                     }
                   }
+                  // Determine whether to show day labels (when data span is within ~1 month)
+                  final bool _showDays = _maxX < 31.0;
+                  final bool _showMonths = _maxX < 365.0;
+                  final bool _showYears = true;
+
+                  if (!_showDays && _showMonths) {
+                    // prevent label overlap by requiring gap
+                    double _lastX = 0.0;
+                    var xs = monthLabels.keys.toList();
+                    xs.sort();
+                    for (var x in xs) {
+                      if (_lastX > 0.0 && x - _lastX < 15.0) {
+                        monthLabels[x] = ' ';
+                      } else if (monthLabels[x]!.isNotEmpty) {
+                        _lastX = x;
+                      }
+                    }
+                  }
+
                   double upper = _threshold1 > _threshold2 ? _threshold1 : _threshold2;
                   double lower = _threshold1 > _threshold2 ? _threshold2 : _threshold1;
-                  return Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: RepaintBoundary(
-                      key: _chartKey,
-                      child: Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.only(top: 20.0, right: 20.0, left: 8.0, bottom: 8.0),
-                        child: LineChart(
-                          LineChartData(
-                            minY: AppConsts.minYValue,
-                            maxY: AppConsts.maxYValue,
-                            lineBarsData: [
-                              LineChartBarData(
-                                spots: spots,
-                                isCurved: false,
-                                barWidth: 4,
-                                gradient: LinearGradient(
-                                  colors: [Colors.black, Colors.black],
-                                ),
-                                belowBarData: BarAreaData(show: false),
-                                dotData: FlDotData(
-                                  show: true,
-                                  getDotPainter: (spot, percent, barData, index) {
-                                    final type = (index < types.length) ? types[index] : '';
-                                    return FlDotCirclePainter(
-                                      radius: 6,
-                                      color: getDotColor(type),
-                                      strokeWidth: 2,
-                                      strokeColor: Colors.white,
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                            rangeAnnotations: RangeAnnotations(
-                              horizontalRangeAnnotations: [
-                                HorizontalRangeAnnotation(
-                                  y1: AppConsts.minYValue,
-                                  y2: lower,
-                                  color: Colors.red, //.withOpacity(0.2),
-                                ),
-                                HorizontalRangeAnnotation(
-                                  y1: lower,
-                                  y2: upper,
-                                  color: Colors.yellow, //.withOpacity(0.2),
-                                ),
-                                HorizontalRangeAnnotation(
-                                  y1: upper,
-                                  y2: AppConsts.maxYValue,
-                                  color: Colors.green, //.withOpacity(0.2),
+                  return SizedBox(
+                    height: 400,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: RepaintBoundary(
+                        key: _chartKey,
+                        child: Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.only(top: 20.0, right: 20.0, left:20.0, bottom: 20.0),
+                          child: LineChart(
+                            LineChartData(
+                              minY: AppConsts.minYValue,
+                              maxY: AppConsts.maxYValue,
+                              lineBarsData: [
+                                LineChartBarData(
+                                  spots: spots,
+                                  isCurved: false,
+                                  barWidth: 4,
+                                  gradient: LinearGradient(
+                                    colors: [Colors.black, Colors.black],
+                                  ),
+                                  belowBarData: BarAreaData(show: false),
+                                  dotData: FlDotData(
+                                    show: true,
+                                    getDotPainter: (spot, percent, barData, index) {
+                                      final type = (index < types.length) ? types[index] : '';
+                                      return FlDotCirclePainter(
+                                        radius: 4,
+                                        color: AppConsts.getOptionColor(type),
+                                        strokeWidth: 1,
+                                        strokeColor: Colors.white,
+                                      );
+                                    },
+                                  ),
                                 ),
                               ],
-                            ),
-                            titlesData: FlTitlesData(
-                              show: true,
-                              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
-                                  interval: 50,
-                                  getTitlesWidget: (value, meta) {
-                                    // Use smaller font size for narrow screens
-                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                    return Text(
-                                      value.toInt().toString(),
-                                      style: TextStyle(
-                                        fontSize: fontSize,
-                                        color: Colors.black87,
-                                      ),
-                                    );
-                                  },
-                                ),
+                              rangeAnnotations: RangeAnnotations(
+                                horizontalRangeAnnotations: [
+                                  HorizontalRangeAnnotation(
+                                    y1: AppConsts.minYValue,
+                                    y2: lower,
+                                    color: Colors.red, //.withOpacity(0.2),
+                                  ),
+                                  HorizontalRangeAnnotation(
+                                    y1: lower,
+                                    y2: upper,
+                                    color: Colors.yellow, //.withOpacity(0.2),
+                                  ),
+                                  HorizontalRangeAnnotation(
+                                    y1: upper,
+                                    y2: AppConsts.maxYValue,
+                                    color: Colors.green, //.withOpacity(0.2),
+                                  ),
+                                ],
                               ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  interval: 1,
-                                  getTitlesWidget: (value, meta) {
-                                    // Show only the day part as label
-                                    String label = '';
-                                    double? closest;
-                                    for (final k in dateLabels.keys) {
-                                      if (closest == null || (k - value).abs() < (closest - value).abs()) {
-                                        closest = k;
+                              titlesData: FlTitlesData(
+                                show: true,
+                                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                leftTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
+                                    interval: 50,
+                                    getTitlesWidget: (value, meta) {
+                                      // Use smaller font size for narrow screens
+                                      double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
+                                      return Text(
+                                        value.toInt().toString(),
+                                        style: TextStyle(
+                                          fontSize: fontSize,
+                                          color: Colors.black87,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                bottomTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    interval: 1,
+                                    reservedSize: 10 + (_showDays ? 15 : 0) + (_showMonths ? 15 : 0) + (_showYears ? 15 : 0),
+                                    getTitlesWidget: (value, meta) {
+                                      // Find closest point. If the visible span is within ~1 month show day (and optional month),
+                                      // otherwise only show month labels to avoid overflow.
+                                      String dayLabel = '';
+                                      String monthLabel = '';
+                                      String yearLabel = '';
+                                      double? closest;
+                                      for (final k in dateLabels.keys) {
+                                        if (closest == null || (k - value).abs() < (closest - value).abs()) {
+                                          closest = k;
+                                        }
                                       }
-                                    }
-                                    if (closest != null && (closest - value).abs() < 0.5) {
-                                      label = dateLabels[closest] ?? '';
-                                    }
-                                    // Use smaller font size for narrow screens
-                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 8.0),
-                                      child: Text(
-                                        label,
-                                        style: TextStyle(fontSize: fontSize),
-                                      ),
-                                    );
-                                  },
+                                      if (closest != null && (closest - value).abs() < 0.5) {
+                                        dayLabel = dateLabels[closest] ?? '';
+                                        monthLabel = (monthLabels[closest] ?? '');
+                                        yearLabel = (yearLabels[closest] ?? '');
+                                      }
+                                      // Use smaller font size for narrow screens
+                                      double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
+                                      return Padding(
+                                          padding: const EdgeInsets.only(top: 2.0),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              if (_showDays)
+                                                Text(
+                                                  dayLabel,
+                                                  style: TextStyle(fontSize: fontSize),
+                                                ),
+                                              if (_showMonths && monthLabel.isNotEmpty) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  monthLabel,
+                                                  style: TextStyle(fontSize: fontSize - 2, color: Colors.black54),
+                                                ),
+                                              ],
+                                              if (_showYears && yearLabel.isNotEmpty) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  yearLabel,
+                                                  style: TextStyle(fontSize: fontSize - 2, color: Colors.black38),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        );
+                                    },
+                                  ),
                                 ),
                               ),
+                              borderData: FlBorderData(show: true),
                             ),
-                            borderData: FlBorderData(show: true),
                           ),
                         ),
-                      ),
+                      )
                     )
                   );
-                }, 
+                },
               ),
-            ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// Guide Page View
-class GuidePageView extends StatefulWidget {
-  const GuidePageView({super.key});
-
-  @override
-  State<GuidePageView> createState() => _GuidePageViewState();
-}
-
-class _GuidePageViewState extends State<GuidePageView> {
-  PageController _pageController = PageController();
-  int _currentPage = 0;
-  final int _totalPages = 6; // Welcome + 5 steps
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _nextPage() {
-    if (_currentPage < _totalPages - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      Navigator.of(context).pop();
-    }
-  }
-
-  void _previousPage() {
-    if (_currentPage > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  void _skipGuide() {
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(AppStrings.get('guide')),
-        actions: [
-          TextButton(
-            onPressed: _skipGuide,
-            child: Text(
-              AppStrings.get('skipGuide'),
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Progress indicator
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: LinearProgressIndicator(
-              value: (_currentPage + 1) / _totalPages,
-              backgroundColor: Colors.grey[300],
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).primaryColor,
-              ),
-            ),
-          ),
-          // Page content
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              onPageChanged: (index) {
-                setState(() {
-                  _currentPage = index;
-                });
-              },
-              children: [
-                _buildWelcomePage(),
-                _buildGuidePage(
-                  AppStrings.get('guideStep1Title'),
-                  AppStrings.get('guideStep1Desc'),
-                  Icons.add_circle_outline,
-                  Colors.blue,
-                ),
-                _buildGuidePage(
-                  AppStrings.get('guideStep2Title'),
-                  AppStrings.get('guideStep2Desc'),
-                  Icons.medical_services_outlined,
-                  Colors.orange,
-                ),
-                _buildGuidePage(
-                  AppStrings.get('guideStep3Title'),
-                  AppStrings.get('guideStep3Desc'),
-                  Icons.show_chart,
-                  Colors.green,
-                ),
-                _buildGuidePage(
-                  AppStrings.get('guideStep4Title'),
-                  AppStrings.get('guideStep4Desc'),
-                  Icons.file_download_outlined,
-                  Colors.purple,
-                ),
-                _buildGuidePage(
-                  AppStrings.get('guideStep5Title'),
-                  AppStrings.get('guideStep5Desc'),
-                  Icons.tips_and_updates_outlined,
-                  Colors.teal,
-                ),
-              ],
-            ),
-          ),
-          // Navigation buttons
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Previous button
-                _currentPage > 0
-                    ? ElevatedButton(
-                        onPressed: _previousPage,
-                        child: Text(AppStrings.get('previous')),
-                      )
-                    : const SizedBox.shrink(),
-                // Page indicator
-                Text(
-                  '${_currentPage + 1} / $_totalPages',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                // Next/Finish button
-                ElevatedButton(
-                  onPressed: _nextPage,
-                  child: Text(
-                    _currentPage == _totalPages - 1
-                        ? AppStrings.get('getStarted')
-                        : AppStrings.get('next'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWelcomePage() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.air,
-            size: 100,
-            color: Theme.of(context).primaryColor,
-          ),
-          const SizedBox(height: 32),
-          Text(
-            AppStrings.get('welcomeTitle'),
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).primaryColor,
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            AppStrings.get('welcomeSubtitle'),
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.grey[600],
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 48),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue[200]!),
-            ),
-            child: Text(
-              AppStrings.get('welcomeDescription'),
-              style: Theme.of(context).textTheme.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGuidePage(String title, String description, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              icon,
-              size: 64,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Text(
-              description,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    height: 1.5,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ],
       ),
     );
   }

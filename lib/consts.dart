@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart'; // Colors
+
 class AppConsts{
   static const String dbName = 'peakflow.db';
   static const String entriesTable = 'entries';
@@ -9,6 +11,15 @@ class AppConsts{
   static const double maxYValue = 1000;
   static const double minYValue = 0;
   static const double yInterval = 100;
+
+  static const Map<String, Color> optionColors = {
+    'morning': Colors.red,
+    'night': Colors.green,
+    'symptomatic': Colors.orange
+  };
+  static Color getOptionColor(String option) {
+    return optionColors[option] ?? Colors.black;
+  }
 }
 
 
@@ -17,6 +28,15 @@ class AppConsts{
 class AppStrings {
   static String currentLanguage = 'zh'; // 'en';
   // set default to Mandarin Chinese in 0.1.9
+
+  // Month name tables (used by chart axis labels)
+  static const Map<String, List<String>> _monthNames = {
+    'en': ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    'zh': ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
+  };
+  static List<String> getMonthNames() {
+    return _monthNames[currentLanguage] ?? _monthNames['en']!;
+  }
 
   static const Map<String, Map<String, String>> _localizedValues = {
     'en': {
