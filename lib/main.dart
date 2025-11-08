@@ -177,7 +177,7 @@ class _HomePageState extends State<HomePage> {
       }
       final rnd = Random();
       final now = DateTime.now();
-      const numEntries = 10; //50;
+      var numEntries = rnd.nextInt(200); // 100; //50;
       // Spread entries roughly every 2 days backward
       for (int i = 0; i < numEntries; i++) {
         final dt = now.subtract(Duration(days: i * 2, hours: rnd.nextInt(24), minutes: rnd.nextInt(60)));
@@ -631,20 +631,6 @@ class _HomePageState extends State<HomePage> {
                   final symptoms = (entry.symptoms != null && entry.symptoms.toString().trim().isNotEmpty)
                       ? entry.symptoms.toString().trim()
                       : null;
-                  Color optionColor;
-                  switch (option) {
-                    case 'morning':
-                      optionColor = Colors.red;
-                      break;
-                    case 'night':
-                      optionColor = Colors.green;
-                      break;
-                    case 'symptomatic':
-                      optionColor = Colors.orange;
-                      break;
-                    default:
-                      optionColor = Colors.black;
-                  }
                   return ListTile(
                     title: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -658,7 +644,11 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(width: 8),
                           Text(
                             AppStrings.get(option),
-                            style: TextStyle(fontSize: 16, color: optionColor, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontSize: 16, 
+                              color: AppConsts.getOptionColor(option), 
+                              fontWeight: FontWeight.w600
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -1409,9 +1399,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
             ),
 
             // Chart
-            SizedBox(
-              height: 400,
-              child: FutureBuilder<List<Entry>>(
+            FutureBuilder<List<Entry>>(
                 future: _getEntryList(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
@@ -1452,9 +1440,15 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   final dateLabels = <double, String>{};
                   // Keep month labels for the bottom axis (show month when it changes)
                   final monthLabels = <double, String>{};
+                  final yearLabels = <double, String>{};
                   final monthNames = AppStrings.getMonthNames();
                   final firstDateTime = DateTime.tryParse('${sortedEntries.last.date} ${sortedEntries.last.time}') ?? DateTime(1900);
+                  
                   double _maxX = 0.0;
+                  String lastDayLabel = '';
+                  String lastMonthLabel = '';
+                  String lastYearLabel = '';
+
                   for (var i = 0; i < sortedEntries.length; i++) {
                     final entry = sortedEntries[i];
                     final dateStr = entry.date;
@@ -1464,26 +1458,53 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                     if (x > _maxX) _maxX = x;
                     spots.add(FlSpot(x, (entry.value).toDouble()));
                     types.add((entry.option as String?)?.toLowerCase() ?? '');
-                    // Only keep the day part for the label
-                    String dayLabel = '';
-                    String monthLabel = '';
-                    if (dateStr.length >= 10) {
-                      // Expecting format YYYY-MM-DD
-                      dayLabel = dateStr.substring(8, 10);
-                      // determine month part and day part
-                      final monthPart = int.tryParse(dateStr.substring(5, 7)) ?? dt.month;
-                      final dayPart = int.tryParse(dateStr.substring(8, 10)) ?? dt.day;
-                      // Only label months on actual first-of-month ticks (day == 1)
-                      if (dayPart == 1) {
-                        monthLabel = monthNames[(monthPart - 1).clamp(0, 11)];
-                        monthLabels[x] = monthLabel;
-                      }
+
+                    // determine month part and day part
+                    final monthPart = int.tryParse(dateStr.substring(5, 7)) ?? dt.month;
+                    final dayPart = int.tryParse(dateStr.substring(8, 10)) ?? dt.day;
+                    final yearPart = int.tryParse(dateStr.substring(0, 4)) ?? dt.year;
+
+                    dateLabels[x] = dayPart.toString();
+                    if (dateLabels[x] != lastDayLabel) {
+                      lastDayLabel = dateLabels[x]!;
+                    } else {
+                      dateLabels[x] = ''; // clear duplicate day label
                     }
-                    dateLabels[x] = dayLabel;
-                    if (monthLabel.isNotEmpty) monthLabels[x] = monthLabel;
+                    monthLabels[x] = monthNames[(monthPart - 1).clamp(0, 11)];
+                    if (monthLabels[x] != lastMonthLabel) {
+                      lastMonthLabel = monthLabels[x]!;
+                    } else {
+                      monthLabels[x] = ''; // clear duplicate month label
+                    }
+                    yearLabels[x] = yearPart.toString();
+                    if (yearLabels[x] != lastYearLabel) {
+                      lastYearLabel = yearLabels[x]!;
+                    } else {
+                      yearLabels[x] = ''; // clear duplicate year label
+                    }
+
+                    // debug print removed
                   }
                   // Determine whether to show day labels (when data span is within ~1 month)
                   final bool _showDays = _maxX < 31.0;
+
+                  // Decide which month labels to render to avoid overlap.
+                  // Compute positions that have month labels (non-empty) in ascending order.
+                  final monthPositions = monthLabels.entries.where((e) => e.value.isNotEmpty).toList()
+                    ..sort((a, b) => a.key.compareTo(b.key));
+                  // Rough maximum labels that fit: one label per ~60 logical pixels of screen width
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final int maxLabels = (screenWidth / 60).floor().clamp(1, 1000);
+                  int step = 1;
+                  if (monthPositions.length > maxLabels) {
+                    step = (monthPositions.length / maxLabels).ceil();
+                  }
+                  final visibleMonthPositions = <double>{};
+                  for (var i = 0; i < monthPositions.length; i++) {
+                    if (i % step == 0) visibleMonthPositions.add(monthPositions[i].key);
+                  }
+                  final bool _showMonths = _maxX < 365.0;
+                  final bool _showYears = true;
                   Color getDotColor(String type) {
                     switch (type) {
                       case 'morning':
@@ -1498,144 +1519,152 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   }
                   double upper = _threshold1 > _threshold2 ? _threshold1 : _threshold2;
                   double lower = _threshold1 > _threshold2 ? _threshold2 : _threshold1;
-                  return Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: RepaintBoundary(
-                      key: _chartKey,
-                      child: Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.only(top: 20.0, right: 20.0, left: 8.0, bottom: 8.0),
-                        child: LineChart(
-                          LineChartData(
-                            minY: AppConsts.minYValue,
-                            maxY: AppConsts.maxYValue,
-                            lineBarsData: [
-                              LineChartBarData(
-                                spots: spots,
-                                isCurved: false,
-                                barWidth: 4,
-                                gradient: LinearGradient(
-                                  colors: [Colors.black, Colors.black],
-                                ),
-                                belowBarData: BarAreaData(show: false),
-                                dotData: FlDotData(
-                                  show: true,
-                                  getDotPainter: (spot, percent, barData, index) {
-                                    final type = (index < types.length) ? types[index] : '';
-                                    return FlDotCirclePainter(
-                                      radius: 4,
-                                      color: getDotColor(type),
-                                      strokeWidth: 1,
-                                      strokeColor: Colors.white,
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                            rangeAnnotations: RangeAnnotations(
-                              horizontalRangeAnnotations: [
-                                HorizontalRangeAnnotation(
-                                  y1: AppConsts.minYValue,
-                                  y2: lower,
-                                  color: Colors.red, //.withOpacity(0.2),
-                                ),
-                                HorizontalRangeAnnotation(
-                                  y1: lower,
-                                  y2: upper,
-                                  color: Colors.yellow, //.withOpacity(0.2),
-                                ),
-                                HorizontalRangeAnnotation(
-                                  y1: upper,
-                                  y2: AppConsts.maxYValue,
-                                  color: Colors.green, //.withOpacity(0.2),
+                  return SizedBox(
+                    height: 400,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: RepaintBoundary(
+                        key: _chartKey,
+                        child: Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.only(top: 20.0, right: 20.0, left:20.0, bottom: 20.0),
+                          child: LineChart(
+                            LineChartData(
+                              minY: AppConsts.minYValue,
+                              maxY: AppConsts.maxYValue,
+                              lineBarsData: [
+                                LineChartBarData(
+                                  spots: spots,
+                                  isCurved: false,
+                                  barWidth: 4,
+                                  gradient: LinearGradient(
+                                    colors: [Colors.black, Colors.black],
+                                  ),
+                                  belowBarData: BarAreaData(show: false),
+                                  dotData: FlDotData(
+                                    show: true,
+                                    getDotPainter: (spot, percent, barData, index) {
+                                      final type = (index < types.length) ? types[index] : '';
+                                      return FlDotCirclePainter(
+                                        radius: 4,
+                                        color: getDotColor(type),
+                                        strokeWidth: 1,
+                                        strokeColor: Colors.white,
+                                      );
+                                    },
+                                  ),
                                 ),
                               ],
-                            ),
-                            titlesData: FlTitlesData(
-                              show: true,
-                              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
-                                  interval: 50,
-                                  getTitlesWidget: (value, meta) {
-                                    // Use smaller font size for narrow screens
-                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                    return Text(
-                                      value.toInt().toString(),
-                                      style: TextStyle(
-                                        fontSize: fontSize,
-                                        color: Colors.black87,
-                                      ),
-                                    );
-                                  },
-                                ),
+                              rangeAnnotations: RangeAnnotations(
+                                horizontalRangeAnnotations: [
+                                  HorizontalRangeAnnotation(
+                                    y1: AppConsts.minYValue,
+                                    y2: lower,
+                                    color: Colors.red, //.withOpacity(0.2),
+                                  ),
+                                  HorizontalRangeAnnotation(
+                                    y1: lower,
+                                    y2: upper,
+                                    color: Colors.yellow, //.withOpacity(0.2),
+                                  ),
+                                  HorizontalRangeAnnotation(
+                                    y1: upper,
+                                    y2: AppConsts.maxYValue,
+                                    color: Colors.green, //.withOpacity(0.2),
+                                  ),
+                                ],
                               ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  interval: 1,
-                                  getTitlesWidget: (value, meta) {
-                                    // Find closest point. If the visible span is within ~1 month show day (and optional month),
-                                    // otherwise only show month labels to avoid overflow.
-                                    String dayLabel = '';
-                                    String monthLabel = '';
-                                    double? closest;
-                                    for (final k in dateLabels.keys) {
-                                      if (closest == null || (k - value).abs() < (closest - value).abs()) {
-                                        closest = k;
+                              titlesData: FlTitlesData(
+                                show: true,
+                                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                leftTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
+                                    interval: 50,
+                                    getTitlesWidget: (value, meta) {
+                                      // Use smaller font size for narrow screens
+                                      double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
+                                      return Text(
+                                        value.toInt().toString(),
+                                        style: TextStyle(
+                                          fontSize: fontSize,
+                                          color: Colors.black87,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                bottomTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    interval: 1,
+                                    reservedSize: 10 + (_showDays ? 15 : 0) + (_showMonths ? 15 : 0) + (_showYears ? 15 : 0),
+                                    getTitlesWidget: (value, meta) {
+                                      // Find closest point. If the visible span is within ~1 month show day (and optional month),
+                                      // otherwise only show month labels to avoid overflow.
+                                      String dayLabel = '';
+                                      String monthLabel = '';
+                                      String yearLabel = '';
+                                      double? closest;
+                                      for (final k in dateLabels.keys) {
+                                        if (closest == null || (k - value).abs() < (closest - value).abs()) {
+                                          closest = k;
+                                        }
                                       }
-                                    }
-                                    if (closest != null && (closest - value).abs() < 0.5) {
-                                      dayLabel = dateLabels[closest] ?? '';
-                                      monthLabel = (monthLabels[closest] ?? '');
-                                    }
-                                    // Use smaller font size for narrow screens
-                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                    if (_showDays) {
+                                      if (closest != null && (closest - value).abs() < 0.5) {
+                                        dayLabel = dateLabels[closest] ?? '';
+                                        monthLabel = (monthLabels[closest] ?? '');
+                                        yearLabel = (yearLabels[closest] ?? '');
+                                        // hide month labels that were filtered out to avoid overlap
+                                        if (!visibleMonthPositions.contains(closest)) {
+                                          monthLabel = '';
+                                        }
+                                      }
+                                      // Use smaller font size for narrow screens
+                                      double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
                                       return Padding(
-                                        padding: const EdgeInsets.only(top: 6.0),
-                                        child: Column(
-                                          children: [
-                                            Text(
-                                              dayLabel,
-                                              style: TextStyle(fontSize: fontSize),
-                                            ),
-                                            if (monthLabel.isNotEmpty) ...[
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                monthLabel,
-                                                style: TextStyle(fontSize: fontSize - 2, color: Colors.black54),
-                                              ),
+                                          padding: const EdgeInsets.only(top: 2.0),
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              if (_showDays)
+                                                Text(
+                                                  dayLabel,
+                                                  style: TextStyle(fontSize: fontSize),
+                                                ),
+                                              if (_showMonths && monthLabel.isNotEmpty) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  monthLabel,
+                                                  style: TextStyle(fontSize: fontSize - 2, color: Colors.black54),
+                                                ),
+                                              ],
+                                              if (_showYears && yearLabel.isNotEmpty) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  yearLabel,
+                                                  style: TextStyle(fontSize: fontSize - 2, color: Colors.black38),
+                                                ),
+                                              ],
                                             ],
-                                          ],
-                                        ),
-                                      );
-                                    } else {
-                                      // Only show month (single line) to prevent overcrowding
-                                      return Padding(
-                                        padding: const EdgeInsets.only(top: 8.0),
-                                        child: Text(
-                                          monthLabel,
-                                          style: TextStyle(fontSize: fontSize, color: Colors.black87),
-                                        ),
-                                      );
-                                    }
-                                  },
+                                          ),
+                                        );
+                                    },
+                                  ),
                                 ),
                               ),
+                              borderData: FlBorderData(show: true),
                             ),
-                            borderData: FlBorderData(show: true),
                           ),
                         ),
-                      ),
+                      )
                     )
                   );
-                }, 
+                },
               ),
-            ),
           ],
         ),
       ),

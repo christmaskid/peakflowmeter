@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart'; // Colors
+
 class AppConsts{
   static const String dbName = 'peakflow.db';
   static const String entriesTable = 'entries';
@@ -9,6 +11,15 @@ class AppConsts{
   static const double maxYValue = 1000;
   static const double minYValue = 0;
   static const double yInterval = 100;
+
+  static const Map<String, Color> optionColors = {
+    'morning': Colors.black, //red,
+    'night': Colors.black, //green,
+    'symptomatic': Colors.black //orange
+  };
+  static Color getOptionColor(String option) {
+    return optionColors[option] ?? Colors.black;
+  }
 }
 
 
