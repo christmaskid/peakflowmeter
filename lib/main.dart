@@ -11,6 +11,8 @@ import 'package:open_file/open_file.dart';
 // Add drift imports
 import 'package:drift/drift.dart' as drift;
 import 'drift_db.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:math';
 
 void main() {
   // 設置系統UI為邊緣到邊緣模式，相容Android 15
@@ -162,6 +164,64 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print('Error getting entries: $e');
       return [];
+    }
+  }
+
+  // Debug helper: insert 50 synthetic entries for testing the graph
+  Future<void> _insertTestData() async {
+    try {
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      final rnd = Random();
+      final now = DateTime.now();
+      const numEntries = 10; //50;
+      // Spread entries roughly every 2 days backward
+      for (int i = 0; i < numEntries; i++) {
+        final dt = now.subtract(Duration(days: i * 2, hours: rnd.nextInt(24), minutes: rnd.nextInt(60)));
+        final val = 100 + rnd.nextInt(700); // realistic range
+        final opt = options[rnd.nextInt(options.length)];
+        await _addEntry(val, opt, '', dt);
+      }
+      if (mounted) setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inserted 50 test entries')),
+      );
+    } catch (e) {
+      print('Error inserting test data: $e');
+    }
+  }
+
+  // Debug helper: delete all entries (debug mode only) with confirmation
+  Future<void> _deleteAllEntries() async {
+    try {
+      final db = database;
+      if (db == null) {
+        print('Database not initialized');
+        return;
+      }
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete all entries'),
+          content: const Text('This will remove all entries from the database. Are you sure?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(AppStrings.get('cancel'))),
+            TextButton(onPressed: () => Navigator.of(context).pop(true), child: Text(AppStrings.get('delete'))),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+
+      await (db.delete(db.entries)).go();
+      if (mounted) setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All entries deleted')),
+      );
+    } catch (e) {
+      print('Error deleting all entries: $e');
     }
   }
   void _showAddEntryDialog(BuildContext context) {
@@ -482,6 +542,26 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: Text(AppStrings.get('appTitle')),
         actions: [
+          
+          // debug buttons
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              onPressed: () async {
+                await _insertTestData();
+              },
+              tooltip: 'Insert test data',
+            ),
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.delete_forever),
+              onPressed: () async {
+                await _deleteAllEntries();
+              },
+              tooltip: 'Delete all entries (debug)',
+            ),
+          // end of debug buttons
+
           IconButton(
             icon: const Icon(Icons.show_chart),
             onPressed: () => _navigateToGraphPage(context),
@@ -1370,27 +1450,40 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                   final spots = <FlSpot>[];
                   final types = <String>[];
                   final dateLabels = <double, String>{};
-                  // Use time since first entry as x value (in days, with fraction for time)
-                  if (sortedEntries.isEmpty) {
-                    return const SizedBox();
-                  }
+                  // Keep month labels for the bottom axis (show month when it changes)
+                  final monthLabels = <double, String>{};
+                  final monthNames = AppStrings.getMonthNames();
                   final firstDateTime = DateTime.tryParse('${sortedEntries.last.date} ${sortedEntries.last.time}') ?? DateTime(1900);
+                  double _maxX = 0.0;
                   for (var i = 0; i < sortedEntries.length; i++) {
                     final entry = sortedEntries[i];
                     final dateStr = entry.date;
                     final timeStr = entry.time;
                     final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
                     final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
+                    if (x > _maxX) _maxX = x;
                     spots.add(FlSpot(x, (entry.value).toDouble()));
                     types.add((entry.option as String?)?.toLowerCase() ?? '');
                     // Only keep the day part for the label
                     String dayLabel = '';
+                    String monthLabel = '';
                     if (dateStr.length >= 10) {
                       // Expecting format YYYY-MM-DD
                       dayLabel = dateStr.substring(8, 10);
+                      // determine month part and day part
+                      final monthPart = int.tryParse(dateStr.substring(5, 7)) ?? dt.month;
+                      final dayPart = int.tryParse(dateStr.substring(8, 10)) ?? dt.day;
+                      // Only label months on actual first-of-month ticks (day == 1)
+                      if (dayPart == 1) {
+                        monthLabel = monthNames[(monthPart - 1).clamp(0, 11)];
+                        monthLabels[x] = monthLabel;
+                      }
                     }
                     dateLabels[x] = dayLabel;
+                    if (monthLabel.isNotEmpty) monthLabels[x] = monthLabel;
                   }
+                  // Determine whether to show day labels (when data span is within ~1 month)
+                  final bool _showDays = _maxX < 31.0;
                   Color getDotColor(String type) {
                     switch (type) {
                       case 'morning':
@@ -1430,9 +1523,9 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                   getDotPainter: (spot, percent, barData, index) {
                                     final type = (index < types.length) ? types[index] : '';
                                     return FlDotCirclePainter(
-                                      radius: 6,
+                                      radius: 4,
                                       color: getDotColor(type),
-                                      strokeWidth: 2,
+                                      strokeWidth: 1,
                                       strokeColor: Colors.white,
                                     );
                                   },
@@ -1485,8 +1578,10 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                   showTitles: true,
                                   interval: 1,
                                   getTitlesWidget: (value, meta) {
-                                    // Show only the day part as label
-                                    String label = '';
+                                    // Find closest point. If the visible span is within ~1 month show day (and optional month),
+                                    // otherwise only show month labels to avoid overflow.
+                                    String dayLabel = '';
+                                    String monthLabel = '';
                                     double? closest;
                                     for (final k in dateLabels.keys) {
                                       if (closest == null || (k - value).abs() < (closest - value).abs()) {
@@ -1494,17 +1589,40 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                                       }
                                     }
                                     if (closest != null && (closest - value).abs() < 0.5) {
-                                      label = dateLabels[closest] ?? '';
+                                      dayLabel = dateLabels[closest] ?? '';
+                                      monthLabel = (monthLabels[closest] ?? '');
                                     }
                                     // Use smaller font size for narrow screens
                                     double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 8.0),
-                                      child: Text(
-                                        label,
-                                        style: TextStyle(fontSize: fontSize),
-                                      ),
-                                    );
+                                    if (_showDays) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 6.0),
+                                        child: Column(
+                                          children: [
+                                            Text(
+                                              dayLabel,
+                                              style: TextStyle(fontSize: fontSize),
+                                            ),
+                                            if (monthLabel.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                monthLabel,
+                                                style: TextStyle(fontSize: fontSize - 2, color: Colors.black54),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      );
+                                    } else {
+                                      // Only show month (single line) to prevent overcrowding
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 8.0),
+                                        child: Text(
+                                          monthLabel,
+                                          style: TextStyle(fontSize: fontSize, color: Colors.black87),
+                                        ),
+                                      );
+                                    }
                                   },
                                 ),
                               ),
