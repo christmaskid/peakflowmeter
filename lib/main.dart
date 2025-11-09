@@ -201,7 +201,7 @@ class _HomePageState extends State<HomePage> {
       }
       final rnd = Random();
       final now = DateTime.now();
-      var numEntries = rnd.nextInt(200); // 100; //50;
+      const numEntries = 50; // 10; //
       // Spread entries roughly every 2 days backward
       for (int i = 0; i < numEntries; i++) {
         final dt = now.subtract(Duration(days: i * 2, hours: rnd.nextInt(24), minutes: rnd.nextInt(60)));
@@ -595,6 +595,11 @@ class _HomePageState extends State<HomePage> {
           // end of debug buttons
 
           IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => _showGuide(context),
+            tooltip: AppStrings.get('guide'),
+          ),
+          IconButton(
             icon: const Icon(Icons.show_chart),
             onPressed: () => _navigateToGraphPage(context),
           ),
@@ -794,6 +799,8 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
   double _threshold2 = AppConsts.lowerThreshold; // default
   late TextEditingController _threshold1Controller;
   late TextEditingController _threshold2Controller;
+  late FocusNode _threshold1FocusNode;
+  late FocusNode _threshold2FocusNode;
 
   Future<void> _exportData(BuildContext context, List<Entry> entries) async {
     try {
@@ -1220,6 +1227,11 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
     super.initState();
     _threshold1Controller = TextEditingController(text: _threshold1.toString());
     _threshold2Controller = TextEditingController(text: _threshold2.toString());
+    // Create focus nodes to validate cross-field relations on focus loss (deferred validation)
+    _threshold1FocusNode = FocusNode();
+    _threshold2FocusNode = FocusNode();
+
+    // Keep controllers validating numeric bounds while typing, but defer cross-field validation
     _threshold1Controller.addListener(() {
       final d = double.tryParse(_threshold1Controller.text);
       if (d != null && d != _threshold1) {
@@ -1232,12 +1244,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
           _threshold1Controller.text = AppConsts.minYValue.toString();
           return;
         }
-        // Validate that upper threshold is higher than lower threshold
-        if (d <= _threshold2) {
-          _threshold1Controller.text = (_threshold2 + 1).toString();
-          _showThresholdValidationMessage();
-          return;
-        }
+        // Defer cross-field (upper > lower) validation until focus is lost
         setState(() => _threshold1 = d);
         _setSetting('upper_threshold', d.toString());
       }
@@ -1254,14 +1261,39 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
           _threshold2Controller.text = AppConsts.minYValue.toString();
           return;
         }
-        // Validate that lower threshold is lower than upper threshold
-        if (d >= _threshold1) {
-          _threshold2Controller.text = (_threshold1 - 1).toString();
-          _showThresholdValidationMessage();
-          return;
-        }
+        // Defer cross-field (lower < upper) validation until focus is lost
         setState(() => _threshold2 = d);
         _setSetting('lower_threshold', d.toString());
+      }
+    });
+
+    // When a threshold field loses focus, enforce the cross-field relationship and show a message if corrected
+    _threshold1FocusNode.addListener(() {
+      if (!_threshold1FocusNode.hasFocus) {
+        final d = double.tryParse(_threshold1Controller.text) ?? _threshold1;
+        var v = d.clamp(AppConsts.minYValue, AppConsts.maxYValue);
+        if (v <= _threshold2) {
+          // Make upper at least 1 unit above lower if possible
+          final newVal = (_threshold2 + 1).clamp(AppConsts.minYValue, AppConsts.maxYValue);
+          _threshold1Controller.text = newVal.toString();
+          _showThresholdValidationMessage();
+        } else {
+          _threshold1Controller.text = v.toString();
+        }
+      }
+    });
+    _threshold2FocusNode.addListener(() {
+      if (!_threshold2FocusNode.hasFocus) {
+        final d = double.tryParse(_threshold2Controller.text) ?? _threshold2;
+        var v = d.clamp(AppConsts.minYValue, AppConsts.maxYValue);
+        if (v >= _threshold1) {
+          // Make lower at least 1 unit below upper if possible
+          final newVal = (_threshold1 - 1).clamp(AppConsts.minYValue, AppConsts.maxYValue);
+          _threshold2Controller.text = newVal.toString();
+          _showThresholdValidationMessage();
+        } else {
+          _threshold2Controller.text = v.toString();
+        }
       }
     });
     _loadThresholds();
@@ -1281,6 +1313,8 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
   void dispose() {
     _threshold1Controller.dispose();
     _threshold2Controller.dispose();
+    _threshold1FocusNode.dispose();
+    _threshold2FocusNode.dispose();
     super.dispose();
   }
 
@@ -1411,6 +1445,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                           ),
                           keyboardType: TextInputType.number,
                           controller: _threshold1Controller,
+                          focusNode: _threshold1FocusNode,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1423,6 +1458,7 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
                           ),
                           keyboardType: TextInputType.number,
                           controller: _threshold2Controller,
+                          focusNode: _threshold2FocusNode,
                         ),
                       ),
                     ],
@@ -1433,254 +1469,504 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
 
             // Chart
             FutureBuilder<List<Entry>>(
-                future: _getEntryList(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  List<Entry> entries = snapshot.data!;
-                  // Filter by date range if set
-                  if (_startDate != null) {
-                    entries = entries.where((e) {
-                      final date = DateTime.tryParse(e.date) ?? DateTime(1900);
-                      return !date.isBefore(_startDate!);
-                    }).toList();
-                  }
-                  if (_endDate != null) {
-                    entries = entries.where((e) {
-                      final date = DateTime.tryParse(e.date) ?? DateTime(1900);
-                      return !date.isAfter(_endDate!);
-                    }).toList();
-                  }
-                  if (entries.length < 2) {
-                    return Center(
-                      child: Text(
-                        AppStrings.get('notEnoughData'),
-                        style: TextStyle(fontSize: 18),
-                        textAlign: TextAlign.center,
-                      ),
-                    );
-                  }
-                  // Sort by date and time descending (make a copy first)
-                  final sortedEntries = List<Entry>.from(entries);
-                  sortedEntries.sort((a, b) {
-                    final dateA = DateTime.tryParse('${a.date} ${a.time}') ?? DateTime(1900);
-                    final dateB = DateTime.tryParse('${b.date} ${b.time}') ?? DateTime(1900);
-                    return dateB.compareTo(dateA);
-                  });
-                  final spots = <FlSpot>[];
-                  final types = <String>[];
-                  final dateLabels = <double, String>{};
-                  // Keep month labels for the bottom axis (show month when it changes)
-                  final monthLabels = <double, String>{};
-                  final yearLabels = <double, String>{};
-                  final monthNames = AppStrings.getMonthNames();
-                  final firstDateTime = DateTime.tryParse('${sortedEntries.last.date} ${sortedEntries.last.time}') ?? DateTime(1900);
-                  
-                  double _maxX = 0.0;
-                  String lastDayLabel = '';
-                  String lastMonthLabel = '';
-                  String lastYearLabel = '';
+              future: _getEntryList(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                List<Entry> entries = snapshot.data!;
+                // Filter by date range if set
+                if (_startDate != null) {
+                  entries = entries.where((e) {
+                    final date = DateTime.tryParse(e.date) ?? DateTime(1900);
+                    return !date.isBefore(_startDate!);
+                  }).toList();
+                }
+                if (_endDate != null) {
+                  entries = entries.where((e) {
+                    final date = DateTime.tryParse(e.date) ?? DateTime(1900);
+                    return !date.isAfter(_endDate!);
+                  }).toList();
+                }
+                if (entries.length < 2) {
+                  return Center(
+                    child: Text(
+                      AppStrings.get('notEnoughData'),
+                      style: TextStyle(fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                }
+                // Sort by date and time descending (make a copy first)
+                final sortedEntries = List<Entry>.from(entries);
+                sortedEntries.sort((a, b) {
+                  final dateA = DateTime.tryParse('${a.date} ${a.time}') ?? DateTime(1900);
+                  final dateB = DateTime.tryParse('${b.date} ${b.time}') ?? DateTime(1900);
+                  return dateA.compareTo(dateB);
+                });
+                final spots = <FlSpot>[];
+                final types = <String>[];
+                final dateLabels = <double, String>{};
+                // Keep month labels for the bottom axis (show month when it changes)
+                final monthLabels = <double, String>{};
+                final yearLabels = <double, String>{};
+                final monthNames = AppStrings.getMonthNames();
+                final firstDateTime = DateTime.tryParse('${sortedEntries.first.date} ${sortedEntries.first.time}') ?? DateTime(1900);
+                
+                double _maxX = 0.0;
+                String lastDayLabel = '';
+                String lastMonthLabel = '';
+                String lastYearLabel = '';
 
-                  for (var i = 0; i < sortedEntries.length; i++) {
-                    final entry = sortedEntries[i];
-                    final dateStr = entry.date;
-                    final timeStr = entry.time;
-                    final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
-                    final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
-                    if (x > _maxX) _maxX = x;
-                    spots.add(FlSpot(x, (entry.value).toDouble()));
-                    types.add((entry.option as String?)?.toLowerCase() ?? '');
+                for (var i = 0; i < sortedEntries.length; i++) {
+                  final entry = sortedEntries[i];
+                  final dateStr = entry.date;
+                  final timeStr = entry.time;
+                  final dt = DateTime.tryParse('$dateStr $timeStr') ?? firstDateTime;
+                  final x = dt.difference(firstDateTime).inMinutes / 1440.0; // days as double
+                  if (x > _maxX) _maxX = x;
+                  spots.add(FlSpot(x, (entry.value).toDouble()));
+                  types.add((entry.option as String?)?.toLowerCase() ?? '');
 
-                    // determine month part and day part
-                    final monthPart = int.tryParse(dateStr.substring(5, 7)) ?? dt.month;
-                    final dayPart = int.tryParse(dateStr.substring(8, 10)) ?? dt.day;
-                    final yearPart = int.tryParse(dateStr.substring(0, 4)) ?? dt.year;
+                  // determine month part and day part
+                  final monthPart = int.tryParse(dateStr.substring(5, 7)) ?? dt.month;
+                  final dayPart = int.tryParse(dateStr.substring(8, 10)) ?? dt.day;
+                  final yearPart = int.tryParse(dateStr.substring(0, 4)) ?? dt.year;
 
-                    dateLabels[x] = dayPart.toString();
-                    if (dateLabels[x] != lastDayLabel) {
-                      lastDayLabel = dateLabels[x]!;
-                    } else {
-                      dateLabels[x] = ''; // clear duplicate day label
+                  dateLabels[x] = dayPart.toString();
+                  if (dateLabels[x] != lastDayLabel) {
+                    lastDayLabel = dateLabels[x]!;
+                  } else {
+                    dateLabels[x] = ''; // clear duplicate day label
+                  }
+                  monthLabels[x] = monthNames[(monthPart - 1).clamp(0, 11)];
+                  if (monthLabels[x] != lastMonthLabel) {
+                    lastMonthLabel = monthLabels[x]!;
+                  } else {
+                    monthLabels[x] = ''; // clear duplicate month label
+                  }
+                  yearLabels[x] = yearPart.toString();
+                  if (yearLabels[x] != lastYearLabel) {
+                    lastYearLabel = yearLabels[x]!;
+                  } else {
+                    yearLabels[x] = ''; // clear duplicate year label
+                  }
+                }
+                // Determine whether to show day labels (when data span is within ~1 month)
+                final bool _showDays = _maxX < 31.0;
+                final bool _showMonths = _maxX < 365.0;
+                final bool _showYears = true;
+                print("_maxX: $_maxX, showDays: $_showDays, showMonths: $_showMonths, showYears: $_showYears");
+
+                if (!_showDays && _showMonths) {
+                  // prevent label overlap by requiring gap
+                  double _lastX = 0.0;
+                  var xs = monthLabels.keys.toList();
+                  xs.sort();
+                  for (var x in xs) {
+                    if (_lastX > 0.0 && x - _lastX < 20.0) {
+                      dateLabels[x] = ' ';
+                      monthLabels[x] = ' ';
+                      yearLabels[x] = ' ';
+                    } else if (monthLabels[x]!.isNotEmpty) {
+                      _lastX = x;
                     }
-                    monthLabels[x] = monthNames[(monthPart - 1).clamp(0, 11)];
-                    if (monthLabels[x] != lastMonthLabel) {
-                      lastMonthLabel = monthLabels[x]!;
-                    } else {
-                      monthLabels[x] = ''; // clear duplicate month label
-                    }
-                    yearLabels[x] = yearPart.toString();
-                    if (yearLabels[x] != lastYearLabel) {
-                      lastYearLabel = yearLabels[x]!;
-                    } else {
-                      yearLabels[x] = ''; // clear duplicate year label
-                    }
                   }
-                  // Determine whether to show day labels (when data span is within ~1 month)
-                  final bool _showDays = _maxX < 31.0;
-                  final bool _showMonths = _maxX < 365.0;
-                  final bool _showYears = true;
+                }
 
-                  if (!_showDays && _showMonths) {
-                    // prevent label overlap by requiring gap
-                    double _lastX = 0.0;
-                    var xs = monthLabels.keys.toList();
-                    xs.sort();
-                    for (var x in xs) {
-                      if (_lastX > 0.0 && x - _lastX < 15.0) {
-                        monthLabels[x] = ' ';
-                      } else if (monthLabels[x]!.isNotEmpty) {
-                        _lastX = x;
-                      }
-                    }
-                  }
-
-                  double upper = _threshold1 > _threshold2 ? _threshold1 : _threshold2;
-                  double lower = _threshold1 > _threshold2 ? _threshold2 : _threshold1;
-                  return SizedBox(
-                    height: 400,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: RepaintBoundary(
-                        key: _chartKey,
-                        child: Container(
-                          color: Colors.white,
-                          padding: const EdgeInsets.only(top: 20.0, right: 20.0, left:20.0, bottom: 20.0),
-                          child: LineChart(
-                            LineChartData(
-                              minY: AppConsts.minYValue,
-                              maxY: AppConsts.maxYValue,
-                              lineBarsData: [
-                                LineChartBarData(
-                                  spots: spots,
-                                  isCurved: false,
-                                  barWidth: 4,
-                                  gradient: LinearGradient(
-                                    colors: [Colors.black, Colors.black],
-                                  ),
-                                  belowBarData: BarAreaData(show: false),
-                                  dotData: FlDotData(
-                                    show: true,
-                                    getDotPainter: (spot, percent, barData, index) {
-                                      final type = (index < types.length) ? types[index] : '';
-                                      return FlDotCirclePainter(
-                                        radius: 4,
-                                        color: AppConsts.getOptionColor(type),
-                                        strokeWidth: 1,
-                                        strokeColor: Colors.white,
-                                      );
-                                    },
-                                  ),
+                double upper = _threshold1 > _threshold2 ? _threshold1 : _threshold2;
+                double lower = _threshold1 > _threshold2 ? _threshold2 : _threshold1;
+                return SizedBox(
+                  height: 400,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: RepaintBoundary(
+                      key: _chartKey,
+                      child: Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.only(top: 20.0, right: 20.0, left:20.0, bottom: 20.0),
+                        child: LineChart(
+                          LineChartData(
+                            minY: AppConsts.minYValue,
+                            maxY: AppConsts.maxYValue,
+                            lineBarsData: [
+                              LineChartBarData(
+                                spots: spots,
+                                isCurved: false,
+                                barWidth: 4,
+                                gradient: LinearGradient(
+                                  colors: [Colors.black, Colors.black],
+                                ),
+                                belowBarData: BarAreaData(show: false),
+                                dotData: FlDotData(
+                                  show: true,
+                                  getDotPainter: (spot, percent, barData, index) {
+                                    final type = (index < types.length) ? types[index] : '';
+                                    return FlDotCirclePainter(
+                                      radius: 4,
+                                      color: AppConsts.getOptionColor(type),
+                                      strokeWidth: 1,
+                                      strokeColor: Colors.white,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                            rangeAnnotations: RangeAnnotations(
+                              horizontalRangeAnnotations: [
+                                HorizontalRangeAnnotation(
+                                  y1: AppConsts.minYValue,
+                                  y2: lower,
+                                  color: Colors.red, //.withOpacity(0.2),
+                                ),
+                                HorizontalRangeAnnotation(
+                                  y1: lower,
+                                  y2: upper,
+                                  color: Colors.yellow, //.withOpacity(0.2),
+                                ),
+                                HorizontalRangeAnnotation(
+                                  y1: upper,
+                                  y2: AppConsts.maxYValue,
+                                  color: Colors.green, //.withOpacity(0.2),
                                 ),
                               ],
-                              rangeAnnotations: RangeAnnotations(
-                                horizontalRangeAnnotations: [
-                                  HorizontalRangeAnnotation(
-                                    y1: AppConsts.minYValue,
-                                    y2: lower,
-                                    color: Colors.red, //.withOpacity(0.2),
-                                  ),
-                                  HorizontalRangeAnnotation(
-                                    y1: lower,
-                                    y2: upper,
-                                    color: Colors.yellow, //.withOpacity(0.2),
-                                  ),
-                                  HorizontalRangeAnnotation(
-                                    y1: upper,
-                                    y2: AppConsts.maxYValue,
-                                    color: Colors.green, //.withOpacity(0.2),
-                                  ),
-                                ],
-                              ),
-                              titlesData: FlTitlesData(
-                                show: true,
-                                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                                leftTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                    showTitles: true,
-                                    reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
-                                    interval: 50,
-                                    getTitlesWidget: (value, meta) {
-                                      // Use smaller font size for narrow screens
-                                      double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                      return Text(
-                                        value.toInt().toString(),
-                                        style: TextStyle(
-                                          fontSize: fontSize,
-                                          color: Colors.black87,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                bottomTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                    showTitles: true,
-                                    interval: 1,
-                                    reservedSize: 10 + (_showDays ? 15 : 0) + (_showMonths ? 15 : 0) + (_showYears ? 15 : 0),
-                                    getTitlesWidget: (value, meta) {
-                                      // Find closest point. If the visible span is within ~1 month show day (and optional month),
-                                      // otherwise only show month labels to avoid overflow.
-                                      String dayLabel = '';
-                                      String monthLabel = '';
-                                      String yearLabel = '';
-                                      double? closest;
-                                      for (final k in dateLabels.keys) {
-                                        if (closest == null || (k - value).abs() < (closest - value).abs()) {
-                                          closest = k;
-                                        }
-                                      }
-                                      if (closest != null && (closest - value).abs() < 0.5) {
-                                        dayLabel = dateLabels[closest] ?? '';
-                                        monthLabel = (monthLabels[closest] ?? '');
-                                        yearLabel = (yearLabels[closest] ?? '');
-                                      }
-                                      // Use smaller font size for narrow screens
-                                      double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
-                                      return Padding(
-                                          padding: const EdgeInsets.only(top: 2.0),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            crossAxisAlignment: CrossAxisAlignment.center,
-                                            children: [
-                                              if (_showDays)
-                                                Text(
-                                                  dayLabel,
-                                                  style: TextStyle(fontSize: fontSize),
-                                                ),
-                                              if (_showMonths && monthLabel.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  monthLabel,
-                                                  style: TextStyle(fontSize: fontSize - 2, color: Colors.black54),
-                                                ),
-                                              ],
-                                              if (_showYears && yearLabel.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  yearLabel,
-                                                  style: TextStyle(fontSize: fontSize - 2, color: Colors.black38),
-                                                ),
-                                              ],
-                                            ],
-                                          ),
-                                        );
-                                    },
-                                  ),
-                                ),
-                              ),
-                              borderData: FlBorderData(show: true),
                             ),
+                            titlesData: FlTitlesData(
+                              show: true,
+                              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  reservedSize: MediaQuery.of(context).size.width < 360 ? 35 : 40,
+                                  interval: 50,
+                                  getTitlesWidget: (value, meta) {
+                                    // Use smaller font size for narrow screens
+                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
+                                    return Text(
+                                      value.toInt().toString(),
+                                      style: TextStyle(
+                                        fontSize: fontSize,
+                                        color: Colors.black87,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  interval: 1,
+                                  reservedSize: 10 + (_showDays ? 15 : 0) + (_showMonths ? 15 : 0) + (_showYears ? 15 : 0),
+                                  getTitlesWidget: (value, meta) {
+                                    // Find closest point. If the visible span is within ~1 month show day (and optional month),
+                                    // otherwise only show month labels to avoid overflow.
+                                    String dayLabel = '';
+                                    String monthLabel = '';
+                                    String yearLabel = '';
+                                    double? closest;
+                                    for (final k in dateLabels.keys) {
+                                      if (closest == null || (k - value).abs() < (closest - value).abs()) {
+                                        closest = k;
+                                      }
+                                    }
+                                    if (closest != null && (closest - value).abs() < 0.5) {
+                                      dayLabel = dateLabels[closest] ?? '';
+                                      monthLabel = (monthLabels[closest] ?? '');
+                                      yearLabel = (yearLabels[closest] ?? '');
+                                    }
+                                    // debug prints removed
+                                    // Use smaller font size for narrow screens
+                                    double fontSize = MediaQuery.of(context).size.width < 360 ? 10 : 12;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 2.0),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          if (_showDays)
+                                            Text(
+                                              dayLabel,
+                                              style: TextStyle(fontSize: fontSize),
+                                            ),
+                                          if (_showMonths && monthLabel.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              monthLabel,
+                                              style: TextStyle(fontSize: fontSize - 2, color: Colors.black54),
+                                            ),
+                                          ],
+                                          if (_showYears && yearLabel.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              yearLabel,
+                                              style: TextStyle(fontSize: fontSize - 2, color: Colors.black38),
+                                            ),
+                                          ],
+                                        ]
+                                      ),
+                                    );
+                                  }
+                                )
+                              ),
+                            ),
+                            borderData: FlBorderData(show: true),
                           ),
-                        ),
+                        )
                       )
                     )
-                  );
-                },
-              ),
+                  )
+                );
+              }
+            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Guide Page View
+class GuidePageView extends StatefulWidget {
+  const GuidePageView({super.key});
+
+  @override
+  State<GuidePageView> createState() => _GuidePageViewState();
+}
+
+class _GuidePageViewState extends State<GuidePageView> {
+  PageController _pageController = PageController();
+  int _currentPage = 0;
+  final int _totalPages = 6; // Welcome + 5 steps
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _nextPage() {
+    if (_currentPage < _totalPages - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _previousPage() {
+    if (_currentPage > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _skipGuide() {
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(AppStrings.get('guide')),
+        actions: [
+          TextButton(
+            onPressed: _skipGuide,
+            child: Text(
+              AppStrings.get('skipGuide'),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Progress indicator
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: LinearProgressIndicator(
+              value: (_currentPage + 1) / _totalPages,
+              backgroundColor: Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).primaryColor,
+              ),
+            ),
+          ),
+          // Page content
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              children: [
+                _buildWelcomePage(),
+                _buildGuidePage(
+                  AppStrings.get('guideStep1Title'),
+                  AppStrings.get('guideStep1Desc'),
+                  Icons.add_circle_outline,
+                  Colors.blue,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep2Title'),
+                  AppStrings.get('guideStep2Desc'),
+                  Icons.medical_services_outlined,
+                  Colors.orange,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep3Title'),
+                  AppStrings.get('guideStep3Desc'),
+                  Icons.show_chart,
+                  Colors.green,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep4Title'),
+                  AppStrings.get('guideStep4Desc'),
+                  Icons.file_download_outlined,
+                  Colors.purple,
+                ),
+                _buildGuidePage(
+                  AppStrings.get('guideStep5Title'),
+                  AppStrings.get('guideStep5Desc'),
+                  Icons.tips_and_updates_outlined,
+                  Colors.teal,
+                ),
+              ],
+            ),
+          ),
+          // Navigation buttons
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Previous button
+                _currentPage > 0
+                    ? ElevatedButton(
+                        onPressed: _previousPage,
+                        child: Text(AppStrings.get('previous')),
+                      )
+                    : const SizedBox.shrink(),
+                // Page indicator
+                Text(
+                  '${_currentPage + 1} / $_totalPages',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                // Next/Finish button
+                ElevatedButton(
+                  onPressed: _nextPage,
+                  child: Text(
+                    _currentPage == _totalPages - 1
+                        ? AppStrings.get('getStarted')
+                        : AppStrings.get('next'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWelcomePage() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.air,
+            size: 100,
+            color: Theme.of(context).primaryColor,
+          ),
+          const SizedBox(height: 32),
+          Text(
+            AppStrings.get('welcomeTitle'),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).primaryColor,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            AppStrings.get('welcomeSubtitle'),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Colors.grey[600],
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 48),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: Text(
+              AppStrings.get('welcomeDescription'),
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGuidePage(String title, String description, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 64,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Text(
+              description,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 1.5,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       ),
     );
   }
