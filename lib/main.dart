@@ -7,6 +7,7 @@ import 'consts.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Add drift imports
@@ -867,7 +868,13 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
             TextButton(
               onPressed: () async {
                 try {
-                  final result = await OpenFile.open(filePath, type: 'text/csv');
+                  final result;
+                  if (Platform.isIOS) {
+                    // On iOS, use share sheet to open the file
+                    result = await Share.shareXFiles([XFile(filePath)], text: AppStrings.get('shareCSV'));
+                  } else {
+                    result = await OpenFile.open(filePath, type: 'text/csv');
+                  }
                   if (result.type == ResultType.noAppToOpen) {
                     // Try opening as plain text if no CSV app is available
                     // print('No CSV app found, trying as plain text...');
@@ -1065,7 +1072,14 @@ class _GraphPageWithRangeState extends State<_GraphPageWithRange> {
             // if (!Platform.isIOS)
             TextButton(
               onPressed: () async {
-                final result = await OpenFile.open(filePath);
+                final result;
+                if (Platform.isIOS) {
+                  // On iOS, use share sheet to open the file
+                  result = await Share.shareXFiles([XFile(filePath)], text: AppStrings.get('shareChartImage'));
+                  return;
+                } else {
+                  result = await OpenFile.open(filePath);
+                }
                 Navigator.pop(dialogContext);
                 
                 if (result.type == ResultType.noAppToOpen) {
